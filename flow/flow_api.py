@@ -1,12 +1,12 @@
 """
-Flow API Python Module
+Flow API Python Module.
+All Flow API responses are represented with Python dicts.
 """
 
 import sys
 import subprocess
 import json
 import requests
-import signal
 
 
 class Flow(object):
@@ -19,7 +19,8 @@ class Flow(object):
         self.debug = debug
         self._StartFlowAppGlue(flowappgluebinary_path)
 
-    def __del__(self):
+    def Terminate(self):
+        """Must be called when you are done using the Flow API"""
         if self._flowappglue:
             self._flowappglue.terminate()
 
@@ -28,12 +29,6 @@ class Flow(object):
             print(msg.encode('utf-8'))
             sys.stdout.flush()
 
-    def _signal_handler(self, signal, frame):
-        print("... terminating ...")
-        if self._flowappglue:
-            self._flowappglue.terminate()
-        sys.exit(0)
-
     def _Run(self, method, **params):
         request_str = json.dumps(
             dict(
@@ -41,12 +36,15 @@ class Flow(object):
                 params=[params],
                 token=self._token))
         self._print_debug("request: %s" % request_str)
-        response = requests.post(
-            "http://localhost:%s/rpc" %
-            self._port,
-            headers={
-                'Content-type': 'application/json'},
-            data=request_str)
+        try:
+            response = requests.post(
+                "http://localhost:%s/rpc" %
+                self._port,
+                headers={
+                    'Content-type': 'application/json'},
+                data=request_str)
+        except requests.exceptions.ConnectionError as e: 
+            raise Flow.FlowError(str(e))
         response_data = json.loads(response.text)
         self._print_debug(
             "response: HTTP %s : %s" %
@@ -64,7 +62,6 @@ class Flow(object):
         token_port_line = json.loads(self._flowappglue.stdout.readline())
         self._token = token_port_line["token"]
         self._port = token_port_line["port"]
-        signal.signal(signal.SIGINT, self._signal_handler)
 
     def Config(
             self,
@@ -225,6 +222,14 @@ class Flow(object):
                          ChannelID=cid,
                          MemberAccountID=account_id,
                          MemberState=member_state,
+                         )
+
+    def NewDirectConversation(self, sid, oid, account_id):
+        """Creates a new channel to initiate a direct conversation with another user. Returns a 'ChannelID'."""
+        return self._Run(method="NewDirectConversation",
+                         SessionID=sid,
+                         OrgID=oid,
+                         MemberID=account_id,
                          )
 
     def Close(self, sid):

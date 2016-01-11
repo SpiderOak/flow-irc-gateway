@@ -228,12 +228,17 @@ def main():
     # Proactively Account 1 adds Account 2 to newly created Channel
     flow.ChannelAddMember(sid, oid2, channel_id2, account_id_2, "m")
 
+    channel_id = flow.NewDirectConversation(sid, oid, account_id_2)
+    print("Direct Conversation Channel ID: '%s'" % channel_id)
+
     # Close sessions for the two accounts
     flow.Close(sid)
     flow.Close(sid2)
 
     account1_thread.join()
     account2_thread.join()
+
+    flow.Terminate()
 
     print("Finished.")
 
