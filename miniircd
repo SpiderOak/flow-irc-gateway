@@ -28,14 +28,13 @@ import select
 import socket
 import string
 import sys
-import tempfile
 import time
 from datetime import datetime
 from optparse import OptionParser
-import datetime
 import threading
 import Queue
 import signal
+from collections import namedtuple
 from flow.flow_api import Flow
 
 
@@ -46,27 +45,25 @@ def create_directory(path):
 
 def get_message_timestamp_string(timestamp_usecs):
     timestamp_secs = timestamp_usecs / 1.0e+6
-    return datetime.datetime.fromtimestamp(timestamp_secs).strftime("[%Y-%m-%d %H:%M:%S]")
+    return datetime.fromtimestamp(timestamp_secs).strftime("[%Y-%m-%d %H:%M:%S]")
 
 
-class ChannelMember(object):
-    def __init__(self, nickname, account_id):
-        self.nickname = nickname
-        self.account_id = account_id
-        self.user = ""
-        self.host = ""
-        self.realname = ""
+ChannelMember = namedtuple(
+    "ChannelMember", ["nickname", "account_id", "user", "host", "realname"])
 
 
 class Channel(object):
-    def __init__(self, gateway, name):
+
+    def __init__(self, gateway, channel_id, channel_name="", organization_id="", organization_name=""):
         self.gateway = gateway
-        self.name = name
-        self.members = set() # set of "ChannelMember"
-        self._topic = ""
-        self._key = None
-        self.organization_id = ""
-        self.channel_id = ""
+        self.members = set()  # set of "ChannelMember"
+        self.channel_id = channel_id
+        self.channel_name = channel_name.encode('ascii')
+        self.organization_id = organization_id
+        self.organization_name = organization_name.encode('ascii')
+
+    def get_irc_name(self):
+        return ("#" + self.channel_name + "(" + self.organization_name + ")").encode('ascii')
 
     def get_member_from_account_id(self, account_id):
         for member in self.members:
@@ -83,26 +80,8 @@ class Channel(object):
     def add_member(self, client):
         self.members.add(client)
 
-    def get_topic(self):
-        return self._topic
-
-    def set_topic(self, value):
-        self._topic = value
-
-    topic = property(get_topic, set_topic)
-
-    def get_key(self):
-        return self._key
-
-    def set_key(self, value):
-        self._key = value
-
-    key = property(get_key, set_key)
-
     def remove_client(self, client):
         self.members.discard(client)
-        if not self.members:
-            self.gateway.remove_channel(self)
 
 
 class IRCClient(object):
@@ -110,8 +89,6 @@ class IRCClient(object):
     # The RFC limit for nicknames is 9 characters, but what the heck.
     __valid_nickname_regexp = re.compile(
         r"^[][\`_^{|}A-Za-z][][\`_^{|}A-Za-z0-9-]{0,50}$")
-    __valid_channelname_regexp = re.compile(
-        r"^[&#+!][^\x00\x07\x0a\x0d ,:]{0,50}$")
 
     def __init__(self, gateway, socket):
         self.gateway = gateway
@@ -119,13 +96,16 @@ class IRCClient(object):
         self.nickname = None
         self.user = None
         self.realname = None
-        self.channels = {} # # irc_lower(Channel name) --> Channel instance.
+        self.channels = {}  # irc_lower(Channel name) --> Channel instance.
         (self.host, self.port) = socket.getpeername()
         self.__timestamp = time.time()
         self.__readbuffer = ""
         self.__writebuffer = ""
         self.__sent_ping = False
         self.__handle_command = self.__registration_handler
+
+    def add_channel(self, channel):
+        self.channels[irc_lower(channel.get_irc_name())] = channel
 
     def get_prefix(self):
         return "%s!%s@%s" % (self.nickname, self.user, self.host)
@@ -171,7 +151,6 @@ class IRCClient(object):
             self.__handle_command(command, arguments)
 
     def __pass_handler(self, command, arguments):
-        gateway = self.gateway
         if command == "PASS":
             if len(arguments) == 0:
                 self.reply_461("PASS")
@@ -186,13 +165,12 @@ class IRCClient(object):
                 self.reply("431 :No nickname given")
                 return
             nick = arguments[0]
-            if gateway.get_client(nick):
+            if gateway.get_member(nick):
                 self.reply("433 * %s :Nickname is already in use" % nick)
             elif not self.__valid_nickname_regexp.match(nick):
                 self.reply("432 * %s :Erroneous nickname" % nick)
             else:
                 self.nickname = nick
-                gateway.client_changed_nickname(self, None)
         elif command == "USER":
             if len(arguments) < 4:
                 self.reply_461("USER")
@@ -231,12 +209,13 @@ class IRCClient(object):
             else:
                 channels = []
                 for channelname in arguments[0].split(","):
-                    if gateway.has_channel(channelname):
-                        channels.append(gateway.get_channel(channelname))
+                    channel = gateway.get_channel(channelname)
+                    if channel:
+                        channels.append(channel)
             channels.sort(key=lambda x: x.name)
             for channel in channels:
                 self.reply("322 %s %s %d :%s"
-                           % (self.nickname, channel.name,
+                           % (self.nickname, channel.get_irc_name(),
                               len(channel.members), channel.topic))
             self.reply("323 %s :End of LIST" % self.nickname)
 
@@ -244,71 +223,13 @@ class IRCClient(object):
             self.send_lusers()
 
         def mode_handler():
-            if len(arguments) < 1:
-                self.reply_461("MODE")
-                return
-            targetname = arguments[0]
-            if gateway.has_channel(targetname):
-                channel = gateway.get_channel(targetname)
-                if len(arguments) < 2:
-                    if channel.key:
-                        modes = "+k"
-                        if irc_lower(channel.name) in self.channels:
-                            modes += " %s" % channel.key
-                    else:
-                        modes = "+"
-                    self.reply("324 %s %s %s"
-                               % (self.nickname, targetname, modes))
-                    return
-                flag = arguments[1]
-                if flag == "+k":
-                    if len(arguments) < 3:
-                        self.reply_461("MODE")
-                        return
-                    key = arguments[2]
-                    if irc_lower(channel.name) in self.channels:
-                        channel.key = key
-                    else:
-                        self.reply("442 %s :You're not on that channel"
-                                   % targetname)
-                elif flag == "-k":
-                    if irc_lower(channel.name) in self.channels:
-                        channel.key = None
-                    else:
-                        self.reply("442 %s :You're not on that channel"
-                                   % targetname)
-                else:
-                    self.reply("472 %s %s :Unknown MODE flag"
-                               % (self.nickname, flag))
-            elif targetname == self.nickname:
-                if len(arguments) == 1:
-                    self.reply("221 %s +" % self.nickname)
-                else:
-                    self.reply("501 %s :Unknown MODE flag" % self.nickname)
-            else:
-                self.reply_403(targetname)
+            pass
 
         def motd_handler():
             self.send_motd()
 
         def nick_handler():
-            if len(arguments) < 1:
-                self.reply("431 :No nickname given")
-                return
-            newnick = arguments[0]
-            client = gateway.get_client(newnick)
-            if newnick == self.nickname:
-                pass
-            elif client and client is not self:
-                self.reply("433 %s %s :Nickname is already in use"
-                           % (self.nickname, newnick))
-            elif not self.__valid_nickname_regexp.match(newnick):
-                self.reply("432 %s %s :Erroneous Nickname"
-                           % (self.nickname, newnick))
-            else:
-                oldnickname = self.nickname
-                self.nickname = newnick
-                gateway.client_changed_nickname(self, oldnickname)
+            pass
 
         def notice_and_privmsg_handler():
             if len(arguments) == 0:
@@ -320,16 +241,16 @@ class IRCClient(object):
                 return
             targetname = arguments[0]
             message = arguments[1]
-            if gateway.has_channel(targetname):
-                channel = gateway.get_channel(targetname)
-                if channel:
-                    gateway.transmit_message_to_channel(channel, message)
-            elif gateway.has_member(targetname):
-                member = gateway.get_member(targetname)
-                gateway.transmit_message_to_member(member, message)
+            channel = gateway.get_channel(targetname)
+            if channel:
+                gateway.transmit_message_to_channel(channel, message)
             else:
-                self.reply("401 %s %s :No such nick/channel"
-                           % (self.nickname, targetname))
+                member = gateway.get_member(targetname)
+                if member:
+                    gateway.transmit_message_to_member(member, message)
+                else:
+                    self.reply("401 %s %s :No such nick/channel"
+                               % (self.nickname, targetname))
 
         def part_handler():
             pass
@@ -351,32 +272,14 @@ class IRCClient(object):
             self.disconnect(quitmsg)
 
         def topic_handler():
-            if len(arguments) < 1:
-                self.reply_461("TOPIC")
-                return
-            channelname = arguments[0]
-            channel = self.channels.get(irc_lower(channelname))
-            if channel:
-                if len(arguments) > 1:
-                    newtopic = arguments[1]
-                    channel.topic = newtopic
-                else:
-                    if channel.topic:
-                        self.reply("332 %s %s :%s"
-                                   % (self.nickname, channel.name,
-                                      channel.topic))
-                    else:
-                        self.reply("331 %s %s :No topic is set"
-                                   % (self.nickname, channel.name))
-            else:
-                self.reply("442 %s :You're not on that channel" % channelname)
+            pass
 
         def who_handler():
             if len(arguments) < 1:
                 return
             targetname = arguments[0]
-            if gateway.has_channel(targetname):
-                channel = gateway.get_channel(targetname)
+            channel = gateway.get_channel(targetname)
+            if channel:
                 for member in channel.members:
                     self.reply("352 %s %s %s %s %s %s H :0 %s"
                                % (self.nickname, targetname, member.user,
@@ -389,7 +292,7 @@ class IRCClient(object):
             if len(arguments) < 1:
                 return
             username = arguments[0]
-            user = gateway.get_client(username)
+            user = gateway.get_member(username)
             if user:
                 self.reply("311 %s %s %s %s * :%s"
                            % (self.nickname, user.nickname, user.user,
@@ -397,9 +300,6 @@ class IRCClient(object):
                 self.reply("312 %s %s %s :%s"
                            % (self.nickname, user.nickname, gateway.name,
                               gateway.name))
-                self.reply("319 %s %s :%s"
-                           % (self.nickname, user.nickname,
-                              " ".join(user.channels)))
                 self.reply("318 %s %s :End of WHOIS list"
                            % (self.nickname, user.nickname))
             else:
@@ -426,7 +326,6 @@ class IRCClient(object):
             "WHOIS": whois_handler,
         }
         gateway = self.gateway
-        valid_channel_re = self.__valid_channelname_regexp
         try:
             handler_table[command]()
         except KeyError:
@@ -488,21 +387,27 @@ class IRCClient(object):
         self.reply("422 %s :MOTD File is missing" % self.nickname)
 
     def send_channel_messages(self, channel):
-        messages = self.gateway.flow_service.EnumerateMessages(self.gateway.flow_sid, channel.organization_id, channel.channel_id)
+        messages = self.gateway.flow_service.EnumerateMessages(
+            self.gateway.flow_sid, channel.organization_id, channel.channel_id)
         for message in reversed(messages):
-            member = channel.get_member_from_account_id(message["SenderAccountID"])
+            member = channel.get_member_from_account_id(
+                message["SenderAccountID"])
             if member:
                 message_text = message["Text"]
                 if self.gateway.show_timestamps:
-                    message_timestamp = get_message_timestamp_string(message["CreationTime"])
+                    message_timestamp = get_message_timestamp_string(
+                        message["CreationTime"])
                     message_text = message_timestamp + " " + message_text
-                self.message(":%s!%s@%s PRIVMSG %s :%s" % (member.nickname, member.user, member.host, channel.name, message_text))
+                self.message(":%s!%s@%s PRIVMSG %s :%s" %
+                             (member.nickname, member.user, member.host, channel.get_irc_name(), message_text))
 
     def send_channel_irc_commands(self, channel):
-        self.message(":%s!%s@%s JOIN :%s" % (self.nickname, self.user, self.host, channel.name))
+        self.message(":%s!%s@%s JOIN :%s" %
+                     (self.nickname, self.user, self.host, channel.get_irc_name()))
         for member in channel.members:
-            self.channels[irc_lower(channel.name)] = channel
-            self.message(":%s!%s@%s JOIN :%s" % (member.nickname, member.user, member.host, channel.name))
+            self.add_channel(channel)
+            self.message(":%s!%s@%s JOIN :%s" %
+                         (member.nickname, member.user, member.host, channel.get_irc_name()))
 
     def send_channels_data(self):
         for channel in self.gateway.channels.values():
@@ -511,6 +416,7 @@ class IRCClient(object):
 
 
 class IRCFlowGateway(object):
+
     def __init__(self, options):
         self.ports = options.ports
         self.verbose = options.verbose
@@ -526,12 +432,15 @@ class IRCFlowGateway(object):
         self.name = socket.getfqdn(self.address)[:gateway_name_limit]
 
         self.channels = {}  # irc_lower(Channel name) --> Channel instance.
-        self.clients = {}  # Socket --> Client instance.
-        self.nicknames = {}  # irc_lower(Nickname) --> Client instance.
+        self.clients = {}  # Socket --> IRCClient instance.
+        self.organizations = {}  # OrgID --> Organization Name
         if self.logdir:
             create_directory(self.logdir)
 
-        self._initialize_flow_service(options)
+        if options.daemon:
+            self.daemonize()
+
+        self.initialize_flow_service(options)
 
     def terminate(self):
         self.set_listen_to_events(False)
@@ -541,7 +450,7 @@ class IRCFlowGateway(object):
         self.listen_to_events = value
 
     def get_member(self, nickname):
-        for channel in self.channels:
+        for channel in self.channels.values():
             for member in channel.members:
                 if member.nickname == nickname:
                     return member
@@ -549,48 +458,49 @@ class IRCFlowGateway(object):
 
     def transmit_message_to_channel(self, channel, message_text):
         try:
-            self.flow_service.SendMessage(self.flow_sid, channel.organization_id, channel.channel_id, message_text)
+            self.flow_service.SendMessage(
+                self.flow_sid, channel.organization_id, channel.channel_id, message_text)
         except:
             pass
 
-    def _get_channel_from_id(self, channel_id):
+    def get_channel_from_id(self, channel_id):
         for channel in self.channels.values():
             if channel.channel_id == channel_id:
                 return channel
         return None
 
-    def _get_remote_channel_name(self, org_name, channel_name):
-        return ("#" + channel_name + "(" + org_name + ")").encode('ascii')
-
-    def _get_orgs_and_channels(self):
+    def get_orgs_and_channels(self):
         orgs = self.flow_service.EnumerateOrgs(self.flow_sid)
         for org in orgs:
             oid = org["ID"]
+            self.organizations[oid] = org["Name"]
             channels = self.flow_service.EnumerateChannels(self.flow_sid, oid)
             for channel in channels:
-                irc_channel_name = self._get_remote_channel_name(org["Name"], channel["Name"])
-                irc_channel = Channel(self, irc_channel_name)
-                irc_channel.channel_id = channel["ID"]
-                irc_channel.organization_id = oid
-                self.channels[irc_lower(irc_channel_name)] = irc_channel
-                members = self.flow_service.EnumerateChannelMembers(self.flow_sid, irc_channel.channel_id)
+                if not channel["Name"]:  # unnamed channel (direct message)
+                    continue
+                irc_channel = Channel(self, channel["ID"], channel[
+                                      "Name"], oid, org["Name"])
+                self.add_channel(irc_channel)
+                members = self.flow_service.EnumerateChannelMembers(
+                    self.flow_sid, irc_channel.channel_id)
                 for member in members:
                     if member["EmailAddress"] == self.flow_user_email:
                         self.flow_user_account_id = member["AccountID"]
-                    channel_member = ChannelMember(member["EmailAddress"].encode('ascii'), member["AccountID"])
+                    channel_member = ChannelMember(
+                        member["EmailAddress"].encode('ascii'), member["AccountID"], "", "", "")
                     irc_channel.add_member(channel_member)
-                    self.nicknames[irc_lower(channel_member.nickname)] = channel_member
 
-    def _start_listener(self):
+    def start_listener(self):
         self.event_queue = Queue.Queue()
         self.set_listen_to_events()
         self.listener_thread = threading.Thread(
-            target=self.event_listener_loop, 
+            target=self.event_listener_loop,
             args=(self.flow_service, self.flow_sid, self.event_queue)
-            )
+        )
         self.listener_thread.start()
 
-    def _initialize_flow_service(self, options):
+    def initialize_flow_service(self, options):
+        self.flow_initialized = False
         try:
             self.flow_service = Flow(options.flow_flowappglue, options.debug)
             self.flow_service.Config(
@@ -599,13 +509,13 @@ class IRCFlowGateway(object):
                 options.flow_db,
                 options.flow_schema)
             self.flow_user_email = options.flow_email
-            self.flow_sid = self.flow_service.NewSession(options.flow_email, options.flow_uri)
+            self.flow_sid = self.flow_service.NewSession(
+                options.flow_email, options.flow_uri)
             self.flow_service.StartUp(self.flow_sid)
-            self._get_orgs_and_channels()
-            self._start_listener()
+            self.get_orgs_and_channels()
+            self.start_listener()
             self.flow_initialized = True
         except Flow.FlowError as e:
-            self.flow_initialized = False
             self.print_error("Flow Initialization: '%s'" % str(e))
 
     def daemonize(self):
@@ -630,26 +540,16 @@ class IRCFlowGateway(object):
         os.dup2(dev_null.fileno(), sys.stderr.fileno())
         os.dup2(dev_null.fileno(), sys.stdin.fileno())
 
-    def get_client(self, nickname):
-        return self.nicknames.get(irc_lower(nickname))
-
-    def has_member(self, nickname):
-        for channel in self.channels:
-            for member in channel.members.values():
-                if member.nickname == nickname:
-                    return True
-        return False
+    def add_channel(self, channel):
+        self.channels[irc_lower(channel.get_irc_name())] = channel
 
     def has_channel(self, name):
         return irc_lower(name) in self.channels
 
     def get_channel(self, channelname):
-        if irc_lower(channelname) in self.channels:
-            channel = self.channels[irc_lower(channelname)]
-        else:
-            channel = Channel(self, channelname)
-            self.channels[irc_lower(channelname)] = channel
-        return channel
+        if self.has_channel(channelname):
+            return self.channels[irc_lower(channelname)]
+        return None
 
     def print_info(self, msg):
         if self.verbose:
@@ -664,26 +564,22 @@ class IRCFlowGateway(object):
     def print_error(self, msg):
         sys.stderr.write("%s\n" % msg)
 
-    def client_changed_nickname(self, client, oldnickname):
-        if oldnickname:
-            del self.nicknames[irc_lower(oldnickname)]
-        self.nicknames[irc_lower(client.nickname)] = client
-
     def remove_member_from_channel(self, client, channelname):
         if irc_lower(channelname) in self.channels:
             channel = self.channels[irc_lower(channelname)]
             channel.remove_client(client)
 
     def remove_client(self, client, quitmsg):
-        for x in client.channels.values():
-            x.remove_client(client)
-        if client.nickname \
-                and irc_lower(client.nickname) in self.nicknames:
-            del self.nicknames[irc_lower(client.nickname)]
+        for channel in client.channels.values():
+            channel.remove_client(client)
         del self.clients[client.socket]
 
     def remove_channel(self, channel):
-        del self.channels[irc_lower(channel.name)]
+        del self.channels[irc_lower(channel.get_irc_name())]
+
+    def notify_clients(self, irc_msg):
+        for client in self.clients.values():
+            client.message(irc_msg)
 
     def message_notification(self, messages_data):
         for message in messages_data:
@@ -691,65 +587,78 @@ class IRCFlowGateway(object):
             channel_id = message["ChannelID"]
             message_text = message["Text"]
             if self.show_timestamps:
-                message_timestamp = get_message_timestamp_string(message["CreationTime"])
+                message_timestamp = get_message_timestamp_string(
+                    message["CreationTime"])
                 message_text = message_timestamp + " " + message_text
-            channel = self._get_channel_from_id(channel_id)
+            channel = self.get_channel_from_id(channel_id)
             if not channel:
-                return
+                continue
             member = channel.get_member_from_account_id(sender_account_id)
-            for client in self.clients.values():
-                client.message(":%s!%s@%s PRIVMSG %s :%s" % (member.nickname, member.user, member.host, channel.name, message_text))
+            self.notify_clients(":%s!%s@%s PRIVMSG %s :%s" %
+                                (member.nickname, member.user, member.host, channel.get_irc_name(), message_text))
 
     def channel_notification(self, channels_data):
         for channel_data in channels_data:
-            channel = self._get_channel_from_id(channel_data["ID"])
-            if channel:
-                return
-            new_channel = Channel(self, channel_data["Name"])
-            new_channel.channel_id = channel_data["ID"]
-            new_channel.organization_id = channel_data["OrgID"]
-            self.channels[irc_lower(channel_data["Name"])] = new_channel
+            if not channel_data["ID"] or not channel_data["Name"]:
+                continue
+            channel = self.get_channel_from_id(channel_data["ID"])
+            if channel:  # existing channel?
+                continue
+            organization_name = self.organizations[channel_data["OrgID"]]
+            new_channel = Channel(self, channel_data["ID"], channel_data[
+                                  "Name"], channel_data["OrgID"], organization_name)
+            self.add_channel(new_channel)
 
             for client in self.clients.values():
-                client.message(":%s!%s@%s JOIN :%s" % (client.nickname, client.user, client.host, channel.name))
+                client.message(":%s!%s@%s JOIN :%s" %
+                               (client.nickname, client.user, client.host, channel.get_irc_name()))
 
-            members = self.flow_service.EnumerateChannelMembers(self.flow_sid, irc_channel.channel_id)
+            members = self.flow_service.EnumerateChannelMembers(
+                self.flow_sid, channel.channel_id)
             for member in members:
-                channel_member = ChannelMember(member["EmailAddress"].encode('ascii'), member["AccountID"])
+                channel_member = ChannelMember(
+                    member["EmailAddress"].encode('ascii'), member["AccountID"], "", "", "")
                 new_channel.add_member(channel_member)
-                self.nicknames[irc_lower(channel_member.nickname)] = channel_member
-                for client in self.clients.values():
-                    client.message(":%s!%s@%s JOIN :%s" % (member.nickname, member.user, member.host, channel.name))
+                self.notify_clients(":%s!%s@%s JOIN :%s" %
+                                    (member.nickname, member.user, member.host, channel.get_irc_name()))
+
+    def org_notification(self, organizations_data):
+        pass
 
     def channel_member_notification(self, channel_ids):
         for channel_id in channel_ids:
-            channel = self._get_channel_from_id(channel_id)
+            channel = self.get_channel_from_id(channel_id)
             if not channel:
-                return
-            members = self.flow_service.EnumerateChannelMembers(self.flow_sid, channel_id)
+                continue
+            members = self.flow_service.EnumerateChannelMembers(
+                self.flow_sid, channel_id)
             for member in members:
-                channel_member = channel.get_member_from_nickname(member["EmailAddress"])
+                channel_member = channel.get_member_from_nickname(
+                    member["EmailAddress"])
                 if not channel_member:
-                    channel_member = ChannelMember(member["EmailAddress"].encode('ascii'), member["AccountID"])
-                    self.nicknames[irc_lower(channel_member.nickname)] = channel_member
+                    channel_member = ChannelMember(
+                        member["EmailAddress"].encode('ascii'), member["AccountID"], "", "", "")
                     channel.add_member(channel_member)
-                    for client in self.clients.values():
-                        client.message(":%s!%s@%s JOIN :%s" % (channel_member.nickname, channel_member.user, channel_member.host, channel.name))
+                    self.notify_clients(":%s!%s@%s JOIN :%s" %
+                                        (channel_member.nickname, channel_member.user, channel_member.host, channel.get_irc_name()))
 
-    __supported_notifications = [ "message" , "channel", "channel-member-event" ]
+    __supported_notifications = [
+        "message", "channel", "org", "channel-member-event"]
 
     def process_notifications_queue(self):
         event_handler = {
-            "message" : self.message_notification,
-            "channel" : self.channel_notification,
-            "channel-member-event" : self.channel_member_notification,
+            "message": self.message_notification,
+            "channel": self.channel_notification,
+            "org": self.org_notification,
+            "channel-member-event": self.channel_member_notification,
         }
         while not self.event_queue.empty():
             event = self.event_queue.get()
             try:
                 event_handler[event["Type"]](event["Data"])
             except KeyError:
-                self.print_debug("Notification of type '%s' not supported." % event["Type"])
+                self.print_debug(
+                    "Notification of type '%s' not supported." % event["Type"])
 
     def event_listener_loop(self, flow, sid, event_queue):
         while self.listen_to_events:
@@ -779,12 +688,12 @@ class IRCFlowGateway(object):
             self.print_info("Listening on port %d." % port)
         last_aliveness_check = time.time()
         while True:
+            self.process_notifications_queue()
             (iwtd, owtd, ewtd) = select.select(
                 gatewaysockets + [x.socket for x in self.clients.values()],
                 [x.socket for x in self.clients.values()
                  if x.write_queue_size() > 0],
-                [],
-                10)
+                [], 0)
             for x in iwtd:
                 if x in self.clients:
                     self.clients[x].socket_readable_notification()
@@ -802,7 +711,6 @@ class IRCFlowGateway(object):
             for x in owtd:
                 if x in self.clients:  # client may have been disconnected
                     self.clients[x].socket_writable_notification()
-            self.process_notifications_queue()
             now = time.time()
             if last_aliveness_check + 10 < now:
                 for client in self.clients.values():
@@ -924,9 +832,7 @@ def main(argv):
         sys.exit(0)
 
     signal.signal(signal.SIGINT, signal_handler)
-
-    if options.daemon:
-        gateway.daemonize()
+    signal.signal(signal.SIGTERM, signal_handler)
 
     gateway.start()
 
