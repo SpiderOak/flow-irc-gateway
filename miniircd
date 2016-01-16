@@ -38,11 +38,6 @@ from collections import namedtuple
 from flow.flow_api import Flow
 
 
-def create_directory(path):
-    if not os.path.isdir(path):
-        os.makedirs(path)
-
-
 def get_message_timestamp_string(timestamp_usecs):
     timestamp_secs = timestamp_usecs / 1.0e+6
     return datetime.fromtimestamp(timestamp_secs).strftime("[%Y-%m-%d %H:%M:%S]")
@@ -408,22 +403,15 @@ class IRCFlowGateway(object):
         self.ports = options.ports
         self.verbose = options.verbose
         self.debug = options.debug
-        self.logdir = options.logdir
         self.show_timestamps = options.show_timestamps
 
-        if options.listen:
-            self.address = socket.gethostbyname(options.listen)
-        else:
-            self.address = ""
         gateway_name_limit = 63  # From the RFC.
-        self.name = socket.getfqdn(self.address)[:gateway_name_limit]
+        self.name = socket.getfqdn()[:gateway_name_limit]
 
         self.channels = {}  # ChannelID --> Channel instance.
         self.clients = {}  # Socket --> IRCClient instance.
         self.organizations = {}  # OrgID --> Organization Name
         self.pending_channels = {}  # ChannelID --> Channel instance
-        if self.logdir:
-            create_directory(self.logdir)
 
         if options.daemon:
             self.daemonize()
@@ -686,7 +674,7 @@ class IRCFlowGateway(object):
             s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
             s.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
             try:
-                s.bind((self.address, port))
+                s.bind(("localhost", port)) # Listen to local connections only
             except socket.error as e:
                 self.print_error("Could not bind port %s: %s." % (port, e))
                 sys.exit(1)
@@ -738,14 +726,6 @@ def main(argv):
         "--debug",
         action="store_true",
         help="print debug messages to stdout")
-    op.add_option(
-        "--listen",
-        metavar="X",
-        help="listen on specific IP address X")
-    op.add_option(
-        "--logdir",
-        metavar="X",
-        help="store channel log in directory X")
     op.add_option(
         "--ports",
         metavar="X",
