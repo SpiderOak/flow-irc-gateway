@@ -12,6 +12,7 @@ A Python Script that generates the following synthetic data using the Python Flo
     - Account_1, proactively, adds Account 2 to newly created Org
     - Account_1, proactively, adds Account 2 to newly created Channel
     - Account_1 and Account_2 loop on WaitForNotification
+    - Account_1 starts a NewDirectConversation with Account_2
     - Close both sessions
 
 Usage:
@@ -228,8 +229,10 @@ def main():
     # Proactively Account 1 adds Account 2 to newly created Channel
     flow.ChannelAddMember(sid, oid2, channel_id2, account_id_2, "m")
 
-    channel_id = flow.NewDirectConversation(sid, oid, account_id_2)
-    print("Direct Conversation Channel ID: '%s'" % channel_id)
+    # Start a new direct conversation and send a message
+    cid3 = flow.NewDirectConversation(sid, oid, account_id_2)
+    print("Direct Conversation Channel ID: '%s'" % cid3)
+    flow.SendMessage(sid, oid, cid3, "Personal Message")
 
     # Close sessions for the two accounts
     flow.Close(sid)

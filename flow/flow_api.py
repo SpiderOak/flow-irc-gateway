@@ -1,5 +1,5 @@
 """
-Flow API Python Module.
+Flow Synchronous API Python Module.
 All Flow API responses are represented with Python dicts.
 """
 
@@ -43,7 +43,7 @@ class Flow(object):
                 headers={
                     'Content-type': 'application/json'},
                 data=request_str)
-        except requests.exceptions.ConnectionError as e: 
+        except requests.exceptions.ConnectionError as e:
             raise Flow.FlowError(str(e))
         response_data = json.loads(response.text)
         self._print_debug(

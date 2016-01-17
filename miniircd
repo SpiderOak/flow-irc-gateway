@@ -53,13 +53,15 @@ ChannelMember = namedtuple(
 
 class Channel(object):
 
-    def __init__(self, gateway, channel_id, channel_name="", organization_id="", organization_name=""):
+    def __init__(self, gateway, channel_id, channel_name="", organization_id="", organization_name="", direct_channel=False, created_on_irc_session=False):
         self.gateway = gateway
         self.members = set()  # set of "ChannelMember"
         self.channel_id = channel_id
         self.set_name(channel_name)
         self.organization_id = organization_id
         self.set_organization_name(organization_name)
+        self.direct_channel = direct_channel
+        self.created_on_irc_session = created_on_irc_session
 
     def set_name(self, channel_name):
         self.channel_name = channel_name.encode('ascii')
@@ -67,8 +69,22 @@ class Channel(object):
     def set_organization_name(self, organization_name):
         self.organization_name = organization_name.encode('ascii')
 
+    def get_other_member(self):
+        if not self.direct_channel or len(self.members) != 2:
+            return ""
+        for member in self.members:
+            if member.account_id != self.gateway.flow_account_id:
+                return member.nickname
+        return ""
+
     def get_irc_name(self):
-        return ("#" + irc_escape(self.channel_name) + "(" + irc_escape(self.organization_name) + ")").encode('ascii')
+        if self.direct_channel:
+            if self.created_on_irc_session:
+                return irc_escape(self.get_other_member())
+            else:
+                return "#" + irc_escape(self.get_other_member()) + "(" + irc_escape(self.organization_name) + ")-" + self.channel_id[:5]
+        else:
+            return "#" + irc_escape(self.channel_name) + "(" + irc_escape(self.organization_name) + ")"
 
     def get_member_from_account_id(self, account_id):
         for member in self.members:
@@ -147,35 +163,22 @@ class IRCClient(object):
     def __registration_handler(self, command, arguments):
         gateway = self.gateway
         if command == "NICK":
-            if len(arguments) < 1:
-                self.reply("431 :No nickname given")
-                return
-            nick = arguments[0]
-            if gateway.get_member(nick):
-                self.reply("433 * %s :Nickname is already in use" % nick)
-            elif not self.__valid_nickname_regexp.match(nick):
-                self.reply("432 * %s :Erroneous nickname" % nick)
-            else:
-                self.nickname = nick
+            self.nickname = gateway.flow_email  # override user provided nickname
         elif command == "USER":
-            if len(arguments) < 4:
-                self.reply_461("USER")
-                return
-            self.user = arguments[0]
-            self.realname = arguments[3]
+            self.user = gateway.flow_email
+            self.realname = ""
         elif command == "QUIT":
             self.disconnect("Client quit")
             return
         if self.nickname and self.user:
-            self.reply("001 %s :Hi, welcome to IRC" % self.nickname)
+            self.reply("001 %s :Hi, welcome to Flow" % self.nickname)
             self.reply("002 %s :Your host is %s, running version irc-flow-gateway-%s"
                        % (self.nickname, gateway.name, VERSION))
-            self.reply("003 %s :This gateway was created sometime"
-                       % self.nickname)
-            self.reply("004 %s :%s irc-flow-gateway-%s o o"
+            self.reply("003 %s :%s irc-flow-gateway-%s o o"
                        % (self.nickname, gateway.name, VERSION))
             self.send_lusers()
             self.send_motd()
+            self.send_nick_data()
             self.send_channels_data()
             self.__handle_command = self.__command_handler
 
@@ -358,10 +361,6 @@ class IRCClient(object):
     def reply(self, msg):
         self.message(":%s %s" % (self.gateway.name, msg))
 
-    def reply_461(self, command):
-        nickname = self.nickname or "*"
-        self.reply("461 %s %s :Not enough parameters" % (nickname, command))
-
     def send_lusers(self):
         self.reply("251 %s :There are %d users and 0 services on 1 gateway"
                    % (self.nickname, len(self.gateway.clients)))
@@ -384,16 +383,23 @@ class IRCClient(object):
                 self.message(":%s!%s@%s PRIVMSG %s :%s" %
                              (member.nickname, member.user, member.host, channel.get_irc_name(), message_text))
 
-    def send_channel_irc_commands(self, channel):
+    def send_channel_join_commands(self, channel):
+        # Current user JOIN command
         self.message(":%s!%s@%s JOIN :%s" %
                      (self.nickname, self.user, self.host, channel.get_irc_name()))
+        # Then, JOIN for the remaining members
         for member in channel.members:
-            self.message(":%s!%s@%s JOIN :%s" %
-                         (member.nickname, member.user, member.host, channel.get_irc_name()))
+            if member.account_id != self.gateway.flow_account_id:
+                self.message(":%s!%s@%s JOIN :%s" %
+                             (member.nickname, member.user, member.host, channel.get_irc_name()))
+
+    def send_nick_data(self):
+        self.message(":%s!%s@%s NICK :%s" %
+                     (self.nickname, self.user, self.host, self.nickname))
 
     def send_channels_data(self):
         for channel in self.gateway.channels.values():
-            self.send_channel_irc_commands(channel)
+            self.send_channel_join_commands(channel)
             self.send_channel_messages(channel)
 
 
@@ -432,6 +438,14 @@ class IRCFlowGateway(object):
                     return member
         return None
 
+    def get_oid_from_member(self, member):
+        """Returns an OrgID that a member shares with the current flow account"""
+        for channel in self.channels.values():
+            for channel_member in channel.members:
+                if member == channel_member:
+                    return channel.organization_id
+        return ""
+
     def transmit_message_to_channel(self, channel, message_text):
         try:
             self.flow_service.SendMessage(
@@ -439,8 +453,25 @@ class IRCFlowGateway(object):
         except:
             pass
 
-    def transmit_message_to_member(self, member, message):
-        pass
+    def transmit_message_to_member(self, member, message_text):
+        try:
+            oid = self.get_oid_from_member(member)
+            if oid:
+                direct_conversation_cid = self.flow_service.NewDirectConversation(
+                    self.flow_sid, oid, member.account_id)
+                self.flow_service.SendMessage(
+                    self.flow_sid, oid, direct_conversation_cid, message_text)
+                direct_conversation_channel = Channel(
+                    self, direct_conversation_cid, "", oid, self.organizations[oid], True, True)
+                member1 = ChannelMember(irc_escape(self.flow_email.encode(
+                    'ascii')), self.flow_account_id, "", "", "")
+                member2 = ChannelMember(irc_escape(
+                    member.nickname), member.account_id, "", "", "")
+                direct_conversation_channel.add_member(member1)
+                direct_conversation_channel.add_member(member2)
+                self.add_channel(direct_conversation_channel)
+        except:
+            pass
 
     def get_channel(self, channel_id):
         try:
@@ -461,10 +492,9 @@ class IRCFlowGateway(object):
             self.organizations[oid] = org["Name"]
             channels = self.flow_service.EnumerateChannels(self.flow_sid, oid)
             for channel in channels:
-                if not channel["Name"]:  # unnamed channel (direct message)
-                    continue
+                direct_channel = channel["Purpose"] == "direct message"
                 irc_channel = Channel(self, channel["ID"], channel[
-                                      "Name"], oid, org["Name"])
+                                      "Name"], oid, org["Name"], direct_channel)
                 self.add_channel(irc_channel)
                 self.get_channel_members(irc_channel)
 
@@ -480,6 +510,7 @@ class IRCFlowGateway(object):
     def initialize_flow_service(self, options):
         self.flow_initialized = False
         try:
+            self.flow_email = options.flow_email
             self.flow_service = Flow(options.flow_flowappglue, options.debug)
             self.flow_service.Config(
                 options.flow_server,
@@ -487,7 +518,7 @@ class IRCFlowGateway(object):
                 options.flow_db,
                 options.flow_schema)
             self.flow_sid = self.flow_service.NewSession(
-                options.flow_email, options.flow_uri)
+                self.flow_email, options.flow_uri)
             self.flow_service.StartUp(self.flow_sid)
             self.get_orgs_and_channels()
             self.start_listener()
@@ -544,11 +575,13 @@ class IRCFlowGateway(object):
         members = self.flow_service.EnumerateChannelMembers(
             self.flow_sid, channel.channel_id)
         for member in members:
-            channel_member = ChannelMember(irc_escape(member["EmailAddress"].encode(
-                'ascii')), member["AccountID"], "", "", "")
+            account_id = member["AccountID"]
+            account_email = member["EmailAddress"]
+            if account_email == self.flow_email:
+                self.flow_account_id = account_id
+            channel_member = ChannelMember(irc_escape(
+                account_email.encode('ascii')), account_id, "", "", "")
             channel.add_member(channel_member)
-            self.notify_clients(":%s!%s@%s JOIN :%s" %
-                                (channel_member.nickname, channel_member.user, channel_member.host, channel.get_irc_name()))
 
     def org_notification(self, organizations_data):
         for org in organizations_data:
@@ -576,20 +609,25 @@ class IRCFlowGateway(object):
     def process_channel_message(self, message):
         channel_id = message["ID"]
         channel_name = message["Name"]
-        if not channel_id or not channel_name:
+        direct_channel = message["Purpose"] == "direct message"
+        if not channel_id or (not channel_name and not direct_channel):
             return
         channel = self.pending_channels[channel_id]
         if not channel:
             return
         # Update the channel name
-        channel.set_name(channel_name)
+        if direct_channel:
+            channel.direct_channel = True
+        else:
+            channel.set_name(channel_name)
+
+        self.get_channel_members(channel)
+
         self.add_channel(channel)
         del self.pending_channels[channel_id]
-        # Notify the clients with a JOIN to the new channel
+
         for client in self.clients.values():
-            client.message(":%s!%s@%s JOIN :%s" %
-                           (client.nickname, client.user, client.host, channel.get_irc_name()))
-        self.get_channel_members(channel)
+            client.send_channel_join_commands(channel)
 
     def process_regular_message(self, message):
         sender_account_id = message["SenderAccountID"]
@@ -674,7 +712,7 @@ class IRCFlowGateway(object):
             s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
             s.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
             try:
-                s.bind(("localhost", port)) # Listen to local connections only
+                s.bind(("localhost", port))  # Listen to local connections only
             except socket.error as e:
                 self.print_error("Could not bind port %s: %s." % (port, e))
                 sys.exit(1)
