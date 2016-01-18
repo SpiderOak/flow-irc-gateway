@@ -174,8 +174,6 @@ class IRCClient(object):
             self.reply("001 %s :Hi, welcome to Flow" % self.nickname)
             self.reply("002 %s :Your host is %s, running version irc-flow-gateway-%s"
                        % (self.nickname, gateway.name, VERSION))
-            self.reply("003 %s :%s irc-flow-gateway-%s o o"
-                       % (self.nickname, gateway.name, VERSION))
             self.send_lusers()
             self.send_motd()
             self.send_nick_data()
@@ -235,7 +233,7 @@ class IRCClient(object):
                 gateway.transmit_message_to_channel(channel, message)
             else:
                 member = gateway.get_member(targetname)
-                if member:
+                if member and member.account_id != self.gateway.flow_account_id:
                     gateway.transmit_message_to_member(member, message)
                 else:
                     self.reply("401 %s %s :No such nick/channel"
@@ -353,7 +351,7 @@ class IRCClient(object):
             "Disconnected connection from %s:%s (%s)." % (
                 self.host, self.port, quitmsg))
         self.socket.close()
-        self.gateway.remove_client(self, quitmsg)
+        self.gateway.remove_client(self)
 
     def message(self, msg):
         self.__writebuffer += msg + "\r\n"
@@ -564,7 +562,7 @@ class IRCFlowGateway(object):
     def print_error(self, msg):
         sys.stderr.write("%s\n" % msg)
 
-    def remove_client(self, client, quitmsg):
+    def remove_client(self, client):
         del self.clients[client.socket]
 
     def notify_clients(self, irc_msg):
