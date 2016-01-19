@@ -104,9 +104,6 @@ class Channel(object):
 
 class IRCClient(object):
     __linesep_regexp = re.compile(r"\r?\n")
-    # The RFC limit for nicknames is 9 characters, but what the heck.
-    __valid_nickname_regexp = re.compile(
-        r"^[][\`_^{|}A-Za-z][][\`_^{|}A-Za-z0-9-]{0,50}$")
 
     def __init__(self, gateway, socket):
         self.gateway = gateway
@@ -174,8 +171,8 @@ class IRCClient(object):
             self.reply("001 %s :Hi, welcome to Flow" % self.nickname)
             self.reply("002 %s :Your host is %s, running version irc-flow-gateway-%s"
                        % (self.nickname, gateway.name, VERSION))
+            gateway.get_orgs_and_channels()
             self.send_lusers()
-            self.send_motd()
             self.send_nick_data()
             self.send_channels_data()
             self.__handle_command = self.__command_handler
@@ -360,8 +357,8 @@ class IRCClient(object):
         self.message(":%s %s" % (self.gateway.name, msg))
 
     def send_lusers(self):
-        self.reply("251 %s :There are %d users and 0 services on 1 gateway"
-                   % (self.nickname, len(self.gateway.clients)))
+        self.reply("251 %s :There are %d orgs and %d channels"
+                   % (self.nickname, len(self.gateway.organizations), len(self.gateway.channels)))
 
     def send_motd(self):
         self.reply("422 %s :MOTD File is missing" % self.nickname)
@@ -484,15 +481,22 @@ class IRCFlowGateway(object):
         return None
 
     def get_orgs_and_channels(self):
+        self.organizations = {}
+        self.channels = {}
         orgs = self.flow_service.EnumerateOrgs(self.flow_sid)
         for org in orgs:
             oid = org["ID"]
             self.organizations[oid] = org["Name"]
             channels = self.flow_service.EnumerateChannels(self.flow_sid, oid)
             for channel in channels:
+                channel_name = channel["Name"]
                 direct_channel = channel["Purpose"] == "direct message"
-                irc_channel = Channel(self, channel["ID"], channel[
-                                      "Name"], oid, org["Name"], direct_channel)
+                irc_channel = Channel(self, channel["ID"], channel_name, oid, org[
+                                      "Name"], direct_channel)
+                # Check for channel IRC name collision
+                if self.get_channel_from_irc_name(irc_channel.get_irc_name()):
+                    irc_channel.set_name(
+                        channel_name + irc_channel.channel_id[:5])
                 self.add_channel(irc_channel)
                 self.get_channel_members(irc_channel)
 
@@ -511,14 +515,10 @@ class IRCFlowGateway(object):
             self.flow_email = options.flow_email
             self.flow_service = Flow(options.flow_flowappglue, options.debug)
             self.flow_service.Config(
-                options.flow_server,
-                options.flow_port,
-                options.flow_db,
-                options.flow_schema)
+                options.flow_server, options.flow_port, options.flow_db, options.flow_schema)
             self.flow_sid = self.flow_service.NewSession(
                 self.flow_email, options.flow_uri)
             self.flow_service.StartUp(self.flow_sid)
-            self.get_orgs_and_channels()
             self.start_listener()
             self.flow_initialized = True
         except Flow.FlowError as e:
@@ -618,6 +618,9 @@ class IRCFlowGateway(object):
             channel.direct_channel = True
         else:
             channel.set_name(channel_name)
+            # Check for channel IRC name collision
+            if self.get_channel_from_irc_name(channel.get_irc_name()):
+                channel.set_name(channel_name + channel.channel_id[:5])
 
         self.get_channel_members(channel)
 
