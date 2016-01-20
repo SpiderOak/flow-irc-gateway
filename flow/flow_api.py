@@ -232,6 +232,13 @@ class Flow(object):
                          MemberID=account_id,
                          )
 
+    def GetPeer(self, sid, email):
+        """Returns all the metadata of a peer for this user. Returns a 'Peer' dict."""
+        return self._Run(method="GetPeer",
+                         SessionID=sid,
+                         PeerEmailAddress=email,
+                         )
+
     def Close(self, sid):
         """Closes a session and cleanly finishes any long running operations. It could be seen as a logout. Returns 'null'."""
         return self._Run(method="Close",
