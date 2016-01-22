@@ -34,22 +34,32 @@ from optparse import OptionParser
 import threading
 import Queue
 import signal
+import ConfigParser
 from flow.flow_api import Flow
+
+
+CONFIG_FILE_SECTION = "flow-irc-gateway"
 
 
 def get_message_timestamp_string(timestamp_usecs):
     timestamp_secs = timestamp_usecs / 1.0e+6
-    return datetime.fromtimestamp(timestamp_secs).strftime("[%Y-%m-%d %H:%M:%S]")
+    return datetime.fromtimestamp(
+        timestamp_secs).strftime("[%Y-%m-%d %H:%M:%S]")
 
 
-def irc_escape(s):
-    return s.replace(",", "-").replace(" ", "-")
+def irc_escape(string):
+    """Escapes the given string to fulfill IRC constraints.
+    Returns a string with ',' replaced with '-' and spaces replaced with '_'.
+    """
+    # TODO: Make this arbitrary replacement configurable
+    return string.replace(",", "_").replace(" ", "-")
 
 
 class ChannelMember(object):
 
-    def __init__(self, email, account_id, organization_name, user="", host="", realname=""):
-        self.nickname = irc_escape(email.encode('ascii'))
+    def __init__(self, username, account_id, organization_name,
+                 user="", host="", realname=""):
+        self.nickname = irc_escape(username.encode('ascii'))
         self.account_id = account_id
         self.organization_name = irc_escape(organization_name.encode('ascii'))
         self.user = user
@@ -62,15 +72,17 @@ class ChannelMember(object):
 
 class Channel(object):
 
-    def __init__(self, gateway, channel_id, channel_name="", organization_id="", organization_name="", direct_channel=False, created_on_irc_session=False):
+    def __init__(self, gateway, channel_id, channel_name="", organization_id="",
+                 organization_name="", direct_channel=False, created_on_irc_session=False):
         self.gateway = gateway
         self.members = set()  # set of "ChannelMember"
         self.channel_id = channel_id
         self.set_name(channel_name)
         self.organization_id = organization_id
         self.set_organization_name(organization_name)
-        self.direct_channel = direct_channel
+        self.direct = direct_channel
         self.created_on_irc_session = created_on_irc_session
+        self.name_collides = False
 
     def set_name(self, channel_name):
         self.channel_name = channel_name.encode('ascii')
@@ -79,21 +91,28 @@ class Channel(object):
         self.organization_name = organization_name.encode('ascii')
 
     def get_other_dc_member(self):
-        assert self.direct_channel
+        assert self.direct
         assert len(self.members) == 2, "%s" % self.members
         for member in self.members:
             if member.account_id != self.gateway.flow_account_id:
                 return member
         return None
 
+    def channel_suffix(self):
+        return "-" + self.channel_id[:5]
+
     def get_irc_name(self):
-        if self.direct_channel:
+        if self.direct:
             if self.created_on_irc_session:
                 return self.get_other_dc_member().get_irc_nickname()
             else:
-                return "#" + self.get_other_dc_member().nickname + "(" + irc_escape(self.organization_name) + ")-" + self.channel_id[:5]
+                return "#" + self.get_other_dc_member().nickname + \
+                    "(" + irc_escape(self.organization_name) + ")" + \
+                    self.channel_suffix()
         else:
-            return "#" + irc_escape(self.channel_name) + "(" + irc_escape(self.organization_name) + ")"
+            append_id = self.channel_suffix() if self.name_collides else ""
+            return "#" + irc_escape(self.channel_name) + "(" + \
+                irc_escape(self.organization_name) + ")" + append_id
 
     def get_member_from_account_id(self, account_id):
         for member in self.members:
@@ -167,22 +186,25 @@ class IRCClient(object):
                         arguments.append(y[1])
             self.__handle_command(command, arguments)
 
+    def send_welcome(self):
+        self.reply("001 %s :Hi, welcome to Flow" % self.nickname)
+        self.reply("002 %s :Your host is %s, running version flow-irc-gateway-%s" %
+                   (self.nickname, self.gateway.name, VERSION))
+
     def __registration_handler(self, command, arguments):
-        gateway = self.gateway
         if command == "NICK":
-            self.nickname = gateway.flow_email  # override user provided nickname
+            self.nickname = self.gateway.flow_username  # override user provided nickname
         elif command == "USER":
-            self.user = gateway.flow_email
+            self.user = self.gateway.flow_username
             self.realname = ""
         elif command == "QUIT":
             self.disconnect("Client quit")
             return
         if self.nickname and self.user:
-            self.reply("001 %s :Hi, welcome to Flow" % self.nickname)
-            self.reply("002 %s :Your host is %s, running version irc-flow-gateway-%s"
-                       % (self.nickname, gateway.name, VERSION))
-            gateway.get_orgs_and_channels()
+            self.send_welcome()
+            self.gateway.get_orgs_and_channels()
             self.send_lusers()
+            self.send_motd()
             self.send_nick_data()
             self.send_channels_data()
             self.__handle_command = self.__command_handler
@@ -242,15 +264,16 @@ class IRCClient(object):
                     channel, message)
             else:
                 items = self.__dc_member_regexp.split(targetname)[1:-1]
-                email = items[0]
+                username = items[0]
                 organization_name = items[1]
                 # Try to get the member from local members
                 member = gateway.get_member(targetname)
-                if not member or (member and member.account_id != gateway.flow_account_id):
+                if not member or (member and member.account_id !=
+                                  gateway.flow_account_id):
                     if not member:
                         # This is an unknown member to this gateway, try to get
                         # the peer data
-                        member_account_id = gateway.get_flow_member(email)
+                        member_account_id = gateway.get_flow_member(username)
                     else:
                         member_account_id = member.account_id
                     if member_account_id:
@@ -258,7 +281,7 @@ class IRCClient(object):
                         oid = gateway.get_oid_from_name(organization_name)
                         if oid:
                             direct_conversation_channel = gateway.create_direct_conversation_channel(
-                                member_account_id, email, oid, organization_name)
+                                member_account_id, username, oid, organization_name)
                             if direct_conversation_channel:
                                 privmsg_success = gateway.transmit_message_to_member(
                                     member_account_id, direct_conversation_channel.channel_id, oid, message)
@@ -390,8 +413,38 @@ class IRCClient(object):
         self.reply("251 %s :There are %d orgs and %d channels"
                    % (self.nickname, len(self.gateway.organizations), len(self.gateway.channels)))
 
+    def get_list_of_channels_by_org(self):
+        orgs_channels = {}  # OrgName -> [(ChannelName, direct)]
+        for channel in self.gateway.channels.values():
+            if channel.organization_name not in orgs_channels:
+                orgs_channels[channel.organization_name] = []
+            orgs_channels[channel.organization_name].append(
+                (channel.get_irc_name(), channel.direct, len(channel.members)))
+        # Gather empty organizations
+        for org_name in self.gateway.organizations.values():
+            if org_name not in orgs_channels:
+                orgs_channels[org_name] = []
+        for channels in orgs_channels.values():
+            channels.sort()
+        return orgs_channels
+
     def send_motd(self):
-        self.reply("422 %s :MOTD File is missing" % self.nickname)
+        self.reply("375 %s :- %s Message of the day -" %
+                   (self.nickname, self.gateway.name))
+        self.reply("372 %s :- Your Flow username is: %s" %
+                   (self.nickname, self.nickname))
+        self.reply("372 %s :- List of Organizations and Channels:" %
+                   self.nickname)
+        orgs_channels = self.get_list_of_channels_by_org()
+        for org_name, channel_list in orgs_channels.iteritems():
+            self.reply("372 %s :- %s: [%d channels]" %
+                       (self.nickname, org_name, len(channel_list)))
+            for channel_name, direct, member_count in channel_list:
+                direct_channel = " [direct conversation]" if direct else (
+                    " [%d members]" % member_count)
+                self.reply("372 %s :  - %s%s" %
+                           (self.nickname, channel_name, direct_channel))
+        self.reply("376 %s :End of /MOTD command" % self.nickname)
 
     def send_channel_messages(self, channel):
         messages = self.gateway.flow_service.EnumerateMessages(
@@ -405,7 +458,10 @@ class IRCClient(object):
                     message_timestamp = get_message_timestamp_string(
                         message["CreationTime"])
                     message_text = message_timestamp + " " + message_text
-                message_nickname = member.nickname if member.account_id == self.gateway.flow_account_id else member.get_irc_nickname()
+                if member.account_id == self.gateway.flow_account_id:
+                    message_nickname = member.nickname
+                else:
+                    message_nickname = member.get_irc_nickname()
                 self.message(":%s!%s@%s PRIVMSG %s :%s" %
                              (message_nickname, member.user, member.host, channel.get_irc_name(), message_text))
 
@@ -429,10 +485,10 @@ class IRCClient(object):
             self.send_channel_messages(channel)
 
 
-class IRCFlowGateway(object):
+class FlowIRCGateway(object):
 
     def __init__(self, options):
-        self.ports = options.ports
+        self.irc_ports = options.irc_ports
         self.verbose = options.verbose
         self.debug = options.debug
         self.show_timestamps = options.show_timestamps
@@ -470,9 +526,10 @@ class IRCFlowGateway(object):
                 return oid
         return ""
 
-    def get_flow_member(self, email):
+    def get_flow_member(self, username):
         try:
-            member_peer_data = self.flow_service.GetPeer(self.flow_sid, email)
+            member_peer_data = self.flow_service.GetPeer(
+                self.flow_sid, username)
             if member_peer_data:
                 return member_peer_data["AccountID"]
         except:
@@ -487,7 +544,8 @@ class IRCFlowGateway(object):
         except:
             return False
 
-    def create_direct_conversation_channel(self, account_id, account_email, oid, organization_name):
+    def create_direct_conversation_channel(
+            self, account_id, account_username, oid, organization_name):
         direct_conversation_channel = None
         try:
             direct_conversation_cid = self.flow_service.NewDirectConversation(
@@ -496,9 +554,9 @@ class IRCFlowGateway(object):
                 direct_conversation_channel = Channel(
                     self, direct_conversation_cid, "", oid, organization_name, True, True)
                 current_user = ChannelMember(
-                    self.flow_email, self.flow_account_id, organization_name)
+                    self.flow_username, self.flow_account_id, organization_name)
                 other_member = ChannelMember(
-                    account_email, account_id, organization_name)
+                    account_username, account_id, organization_name)
                 direct_conversation_channel.add_member(current_user)
                 direct_conversation_channel.add_member(other_member)
                 self.add_channel(direct_conversation_channel)
@@ -529,6 +587,10 @@ class IRCFlowGateway(object):
                 return channel
         return None
 
+    def check_channel_collision(self, channel):
+        if self.get_channel_from_irc_name(channel.get_irc_name()):
+            channel.name_collides = True
+
     def get_orgs_and_channels(self):
         self.organizations = {}
         self.channels = {}
@@ -543,10 +605,7 @@ class IRCFlowGateway(object):
                 irc_channel = Channel(self, channel["ID"], channel_name, oid, org[
                                       "Name"], direct_channel)
                 self.get_channel_members(irc_channel)
-                # Check for channel IRC name collision
-                if self.get_channel_from_irc_name(irc_channel.get_irc_name()):
-                    irc_channel.set_name(
-                        channel_name + irc_channel.channel_id[:5])
+                self.check_channel_collision(irc_channel)
                 self.add_channel(irc_channel)
 
     def start_listener(self):
@@ -561,12 +620,12 @@ class IRCFlowGateway(object):
     def initialize_flow_service(self, options):
         self.flow_initialized = False
         try:
-            self.flow_email = options.flow_email
-            self.flow_service = Flow(options.flow_flowappglue, options.debug)
+            self.flow_username = options.username
+            self.flow_service = Flow(options.flowappglue, options.debug)
             self.flow_service.Config(
-                options.flow_server, options.flow_port, options.flow_db, options.flow_schema)
+                options.server, options.port, options.db, options.schema)
             self.flow_sid = self.flow_service.NewSession(
-                self.flow_email, options.flow_uri)
+                self.flow_username, options.uri)
             self.flow_service.StartUp(self.flow_sid)
             self.start_listener()
             self.flow_initialized = True
@@ -623,11 +682,11 @@ class IRCFlowGateway(object):
             self.flow_sid, channel.channel_id)
         for member in members:
             account_id = member["AccountID"]
-            account_email = member["EmailAddress"]
-            if account_email == self.flow_email:
+            account_username = member["EmailAddress"]
+            if account_username == self.flow_username:
                 self.flow_account_id = account_id
             channel_member = ChannelMember(
-                account_email, account_id, channel.organization_name)
+                account_username, account_id, channel.organization_name)
             channel.add_member(channel_member)
 
     def org_notification(self, organizations_data):
@@ -657,7 +716,8 @@ class IRCFlowGateway(object):
         channel_id = message["ID"]
         channel_name = message["Name"]
         direct_channel = message["Purpose"] == "direct message"
-        if not channel_id or (not channel_name and not direct_channel) or not channel_id in self.pending_channels:
+        if not channel_id or (
+                not channel_name and not direct_channel) or not channel_id in self.pending_channels:
             return
         channel = self.pending_channels[channel_id]
         # Update the channel name
@@ -665,9 +725,7 @@ class IRCFlowGateway(object):
             channel.direct_channel = True
         else:
             channel.set_name(channel_name)
-            # Check for channel IRC name collision
-            if self.get_channel_from_irc_name(channel.get_irc_name()):
-                channel.set_name(channel_name + channel.channel_id[:5])
+            self.check_channel_collision(channel)
 
         self.get_channel_members(channel)
 
@@ -694,7 +752,9 @@ class IRCFlowGateway(object):
                 message["CreationTime"])
             message_text = message_timestamp + " " + message_text
         self.notify_clients(":%s!%s@%s PRIVMSG %s :%s" %
-                            (sender_member.get_irc_nickname(), sender_member.user, sender_member.host, channel.get_irc_name(), message_text))
+                            (sender_member.get_irc_nickname(), sender_member.user, sender_member.host,
+                             channel.get_irc_name(),
+                             message_text))
 
     def message_notification(self, messages_data):
         channel_messages = messages_data["ChannelMessages"]
@@ -722,7 +782,10 @@ class IRCFlowGateway(object):
                                                    "AccountID"], channel.organization_name)
                     channel.add_member(channel_member)
                     self.notify_clients(":%s!%s@%s JOIN :%s" %
-                                        (channel_member.get_irc_nickname(), channel_member.user, channel_member.host, channel.get_irc_name()))
+                                        (channel_member.get_irc_nickname(),
+                                         channel_member.user,
+                                         channel_member.host,
+                                         channel.get_irc_name()))
 
     __supported_notifications = [
         "org", "channel", "message", "channel-member-event"]
@@ -746,7 +809,8 @@ class IRCFlowGateway(object):
         while self.listen_to_events:
             try:
                 change = flow.WaitForNotification(sid)
-                if change and (change["Type"] in self.__supported_notifications):
+                if change and (
+                        change["Type"] in self.__supported_notifications):
                     event_queue.put(change)
             except Flow.FlowError:
                 pass
@@ -756,7 +820,7 @@ class IRCFlowGateway(object):
             self.terminate()
             return
         gatewaysockets = []
-        for port in self.ports:
+        for port in self.irc_ports:
             s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
             s.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
             try:
@@ -800,95 +864,81 @@ class IRCFlowGateway(object):
                 last_aliveness_check = now
 
 
-def main(argv):
+def parse_options_and_config(argv):
     op = OptionParser(
         version=VERSION,
-        description="irc-flow-gateway is a small IRC gateway to SpiderOak Flow (based on miniircd)")
+        description="flow-irc-gateway is a small IRC gateway to SpiderOak Flow (based off of miniircd)")
     op.add_option(
-        "-d", "--daemon",
-        action="store_true",
-        help="fork and become a daemon")
-    op.add_option(
-        "--debug",
-        action="store_true",
-        help="print debug messages to stdout")
-    op.add_option(
-        "--ports",
+        "--config",
         metavar="X",
-        help="listen to ports X (a list separated by comma or whitespace);"
-             " default: 6667")
+        help="config ini file X")
     op.add_option(
-        "--verbose",
-        action="store_true",
-        help="be verbose (print some progress messages to stdout)")
-    op.add_option(
-        "--flow-flowappglue",
+        "--username",
         metavar="X",
-        help="flowappglue binary path (by default ./flowappglue)")
-    op.add_option(
-        "--flow-server",
-        metavar="X",
-        help="flow service host/ip")
-    op.add_option(
-        "--flow-port",
-        metavar="X",
-        help="flow service port")
-    op.add_option(
-        "--flow-db",
-        metavar="X",
-        help="flow db directory")
-    op.add_option(
-        "--flow-schema",
-        metavar="X",
-        help="flow schema directory")
-    op.add_option(
-        "--flow-email",
-        metavar="X",
-        help="flow account email")
-    op.add_option(
-        "--flow-uri",
-        metavar="X",
-        help="flow account gateway uri")
-    op.add_option(
-        "--show-timestamps",
-        action="store_true",
-        help="prepend timestamps on messages (format: [Y-m-d H:M:S])")
+        help="flow account username")
 
     (options, args) = op.parse_args(argv[1:])
 
-    if not options.flow_server or \
-       not options.flow_port or \
-       not options.flow_db or \
-       not options.flow_email or \
-       not options.flow_uri:
-        missing_arguments = []
-        if not options.flow_server:
-            missing_arguments.append("'--flow-server'")
-        if not options.flow_port:
-            missing_arguments.append("'--flow-port'")
-        if not options.flow_db:
-            missing_arguments.append("'--flow-db'")
-        if not options.flow_email:
-            missing_arguments.append("'--flow-email'")
-        if not options.flow_uri:
-            missing_arguments.append("'--flow-uri'")
-        op.error("Missing arguments: %s" % ", ".join(missing_arguments))
+    if not options.config:
+        op.error("Missing config file argument: '--config'")
 
-    if not options.flow_flowappglue:
-        options.flow_flowappglue = "./flowappglue"
+    config = ConfigParser.RawConfigParser()
+    config.read(options.config)
+
+    if not options.username and config.has_option(
+            CONFIG_FILE_SECTION, "username"):
+        options.username = config.get(CONFIG_FILE_SECTION, "username")
+
+    if not options.username:
+        op.error(
+            "You must provide a username with --username or on 'username' within the config file.")
+
+    options.server = config.get(CONFIG_FILE_SECTION, "server")
+    options.port = config.get(CONFIG_FILE_SECTION, "port")
+    options.db = config.get(CONFIG_FILE_SECTION, "db")
+    options.schema = config.get(CONFIG_FILE_SECTION, "schema")
+    options.uri = config.get(CONFIG_FILE_SECTION, "uri")
+    options.flowappglue = config.get(CONFIG_FILE_SECTION, "flowappglue")
+    try:
+        options.debug = config.getboolean(CONFIG_FILE_SECTION, "debug")
+    except ConfigParser.NoOptionError:
+        options.debug = False
+    try:
+        options.verbose = config.getboolean(CONFIG_FILE_SECTION, "verbose")
+    except ConfigParser.NoOptionError:
+        options.verbose = False
+    try:
+        options.daemon = config.getboolean(CONFIG_FILE_SECTION, "daemon")
+    except ConfigParser.NoOptionError:
+        options.daemon = False
+    try:
+        options.irc_ports = config.get(CONFIG_FILE_SECTION, "irc-ports")
+    except ConfigParser.NoOptionError:
+        options.irc_ports = "6667"
+    try:
+        options.show_timestamps = config.getboolean(
+            CONFIG_FILE_SECTION, "show-timestamps")
+    except ConfigParser.NoOptionError:
+        options.show_timestamps = False
 
     if options.debug:
         options.verbose = True
-    if options.ports is None:
-        options.ports = "6667"
+
+    return options
+
+
+def main(argv):
+
+    options = parse_options_and_config(argv)
+
     ports = []
-    for port in re.split(r"[,\s]+", options.ports):
+    for port in re.split(r"[,\s]+", options.irc_ports):
         try:
             ports.append(int(port))
         except ValueError:
             op.error("bad port: %r" % port)
-    options.ports = ports
-    gateway = IRCFlowGateway(options)
+    options.irc_ports = ports
+    gateway = FlowIRCGateway(options)
 
     def signal_handler(signal, frame):
         print(" ... terminating ...")

@@ -79,10 +79,10 @@ class Flow(object):
                   FlowUseTLS=use_tls,
                   )
 
-    def NewSession(self, email, server_uri):
+    def NewSession(self, username, server_uri):
         """Creates a new session for the given user, even if it doesn't exist. Returns an integer representing a SessionID."""
         response = self._Run(method="NewSession",
-                             EmailAddress=email,
+                             EmailAddress=username,
                              ServerURI=server_uri,
                              )
         return response["SessionID"]
@@ -100,7 +100,7 @@ class Flow(object):
             sid,
             phone_number,
             device_name,
-            email,
+            username,
             server_uri,
             password,
             totpverifier=""):
@@ -111,7 +111,7 @@ class Flow(object):
                          SessionID=sid,
                          PhoneNumber=phone_number,
                          DeviceName=device_name,
-                         EmailAddress=email,
+                         EmailAddress=username,
                          ServerURI=server_uri,
                          Password=password,
                          TotpVerifier=totpverifier,
@@ -232,11 +232,11 @@ class Flow(object):
                          MemberID=account_id,
                          )
 
-    def GetPeer(self, sid, email):
+    def GetPeer(self, sid, username):
         """Returns all the metadata of a peer for this user. Returns a 'Peer' dict."""
         return self._Run(method="GetPeer",
                          SessionID=sid,
-                         PeerEmailAddress=email,
+                         PeerEmailAddress=username,
                          )
 
     def Close(self, sid):
