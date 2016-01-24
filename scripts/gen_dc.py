@@ -17,7 +17,7 @@ Usage:
 """
 
 import sys
-sys.path.append('..')
+sys.path.append('../src')
 from flow.flow_api import Flow
 import argparse
 import random
