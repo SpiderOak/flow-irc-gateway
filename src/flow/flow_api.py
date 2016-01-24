@@ -45,7 +45,8 @@ class Flow(object):
         Arguments:
         method : string, API method name.
         params : kwargs, request parameters.
-        Returns a JSON dict with the response received from the flowappglue, it returns the 'result' part of the response.
+        Returns a JSON dict with the response received from the flowappglue,
+        it returns the 'result' part of the response.
         """
         request_str = json.dumps(
             dict(
@@ -57,7 +58,7 @@ class Flow(object):
             response = requests.post(
                 "http://localhost:%s/rpc" %
                 self._port,
-                headers={ 'Content-type': 'application/json' },
+                headers={'Content-type': 'application/json'},
                 data=request_str)
         except requests.exceptions.ConnectionError as e:
             raise Flow.FlowError(str(e))
@@ -87,7 +88,9 @@ class Flow(object):
             flow_local_database_dir,
             flow_local_schema_dir,
             use_tls="true"):
-        """Sets up the basic configuration parameters for FlowApp to talk FlowServ and create local accounts. Returns 'null'."""
+        """Sets up the basic configuration parameters for FlowApp to talk FlowServ
+        and create local accounts. Returns 'null'.
+        """
         self._Run(method="Config",
                   FlowServHost=flow_serv_host,
                   FlowServPort=flow_serv_port,
@@ -97,7 +100,9 @@ class Flow(object):
                   )
 
     def NewSession(self, username, server_uri):
-        """Creates a new session for the given user, even if it doesn't exist. Returns an integer representing a SessionID."""
+        """Creates a new session for the given user, even if it doesn't exist.
+        Returns an integer representing a SessionID.
+        """
         response = self._Run(method="NewSession",
                              EmailAddress=username,
                              ServerURI=server_uri,
@@ -105,8 +110,9 @@ class Flow(object):
         return response["SessionID"]
 
     def StartUp(self, sid):
-        """Starts the flowapp instance (notification internal loop, etc) for an account that is already created and
-        has a device already configured in the current device. Returns 'null'.
+        """Starts the flowapp instance (notification internal loop, etc)
+        for an account that is already created and has a device already
+        configured in the current device. Returns 'null'.
         """
         self._Run(method="StartUp",
                   SessionID=sid,
@@ -121,8 +127,10 @@ class Flow(object):
             server_uri,
             password,
             totpverifier=""):
-        """Creates an account with the specified data. 'PhoneNumber', along with 'EmailAddress' and 'ServerURI'
-        (these last two provided at 'NewSession') must be unique. Returns 'null'.
+        """Creates an account with the specified data.
+        'PhoneNumber', along with 'EmailAddress' and 'ServerURI'
+        (these last two provided at 'NewSession') must be unique.
+        Returns 'null'.
         """
         return self._Run(method="CreateAccount",
                          SessionID=sid,
@@ -143,7 +151,9 @@ class Flow(object):
                          )
 
     def NewChannel(self, sid, oid, name):
-        """Creates a new channel in a specific 'OrgID'. Returns a string that represents the `ChannelID` created"""
+        """Creates a new channel in a specific 'OrgID'.
+        Returns a string that represents the `ChannelID` created.
+        """
         return self._Run(method="NewChannel",
                          SessionID=sid,
                          OrgID=oid,
@@ -164,14 +174,18 @@ class Flow(object):
                          )
 
     def EnumerateChannelMembers(self, sid, cid):
-        """Lists the channel members for a given 'ChannelID'. Returns an array of 'ChannelMember' dicts."""
+        """Lists the channel members for a given 'ChannelID'.
+        Returns an array of 'ChannelMember' dicts.
+        """
         return self._Run(method="EnumerateChannelMembers",
                          SessionID=sid,
                          ChannelID=cid,
                          )
 
     def SendMessage(self, sid, oid, cid, msg, other_data={}):
-        """Sends a message to a channel this user is a member of. Returns a string that represents the 'MessageID' that has just been sent."""
+        """Sends a message to a channel this user is a member of.
+        Returns a string that represents the 'MessageID' that has just been sent.
+        """
         return self._Run(method="SendMessage",
                          SessionID=sid,
                          OrgID=oid,
@@ -200,7 +214,9 @@ class Flow(object):
                          )
 
     def GetChannel(self, sid, cid):
-        """Returns all the metadata for a channel the user is a member of. Returns a 'Channel' dict."""
+        """Returns all the metadata for a channel the user is a member of.
+        Returns a 'Channel' dict.
+        """
         return self._Run(method="GetChannel",
                          SessionID=sid,
                          ChannelID=cid,
@@ -214,15 +230,19 @@ class Flow(object):
                          )
 
     def EnumerateOrgJoinRequests(self, sid, oid):
-        """Lists all the join requests for an 'OrgID'. Returns an array of 'OrgJoinRequest' dicts"""
+        """Lists all the join requests for an 'OrgID'.
+        Returns an array of 'OrgJoinRequest' dicts.
+        """
         return self._Run(method="EnumerateOrgJoinRequests",
                          SessionID=sid,
                          OrgID=oid,
                          )
 
     def OrgAddMember(self, sid, oid, account_id, member_state):
-        """Adds a member to an organization, assuming the user has the proper permissions. Returns 'null'.
-        'member_state' argument valid values are 'm' (member), 'a' (admin), 'o' (owner), 'b' blocked
+        """Adds a member to an organization, assuming the user has
+        the proper permissions. Returns 'null'.
+        'member_state' argument valid values are
+        'm' (member), 'a' (admin), 'o' (owner), 'b' blocked.
         """
         return self._Run(method="OrgAddMember",
                          SessionID=sid,
@@ -232,7 +252,9 @@ class Flow(object):
                          )
 
     def ChannelAddMember(self, sid, oid, cid, account_id, member_state):
-        """Adds the specified member to the channel as long as the requestor has the right permissions. Returns 'null'."""
+        """Adds the specified member to the channel as long as
+        the requestor has the right permissions. Returns 'null'.
+        """
         return self._Run(method="ChannelAddMember",
                          SessionID=sid,
                          OrgID=oid,
@@ -242,7 +264,9 @@ class Flow(object):
                          )
 
     def NewDirectConversation(self, sid, oid, account_id):
-        """Creates a new channel to initiate a direct conversation with another user. Returns a 'ChannelID'."""
+        """Creates a new channel to initiate a direct conversation with another user.
+        Returns a 'ChannelID'.
+        """
         return self._Run(method="NewDirectConversation",
                          SessionID=sid,
                          OrgID=oid,
@@ -250,14 +274,18 @@ class Flow(object):
                          )
 
     def GetPeer(self, sid, username):
-        """Returns all the metadata of a peer for this user. Returns a 'Peer' dict."""
+        """Returns all the metadata of a peer for this user.
+        Returns a 'Peer' dict.
+        """
         return self._Run(method="GetPeer",
                          SessionID=sid,
                          PeerEmailAddress=username,
                          )
 
     def Close(self, sid):
-        """Closes a session and cleanly finishes any long running operations. It could be seen as a logout. Returns 'null'."""
+        """Closes a session and cleanly finishes any long running operations.
+        It could be seen as a logout. Returns 'null'.
+        """
         return self._Run(method="Close",
                          SessionID=sid,
                          )

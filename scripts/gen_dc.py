@@ -98,7 +98,8 @@ def main():
     flow.StartUp(sid)
 
     # Start WaitForNotification thread for new account
-    account1_thread = threading.Thread(target=wait_for_notifications, args=(sid, flow))
+    account1_thread = threading.Thread(
+        target=wait_for_notifications, args=(sid, flow))
     account1_thread.start()
 
     email2_found = False

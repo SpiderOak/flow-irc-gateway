@@ -6,8 +6,8 @@ import re
 import time
 import socket
 import string
-from common import *
-from channel import *
+import common
+from channel import DirectChannel
 
 
 class IRCClient(object):
@@ -78,15 +78,16 @@ class IRCClient(object):
         """Sends the Welcome Message to the IRC client connection"""
         self.reply("001 %s :Hi, welcome to Flow" % self.nickname)
         self.reply("002 %s :Your host is %s, running version flow-irc-gateway-%s" %
-                   (self.nickname, self.gateway.name, VERSION))
+                   (self.nickname, self.gateway.name, common.VERSION))
 
     def __registration_handler(self, command, arguments):
-        """Handler for the IRC client registration. NICK and USER are received. 
-        This gateway ignores the arguments provided and forces the NICK and USER to be the Flow username.
-        After the registration is complete, all organizations and channels are retrieved from Flow and sent to the IRC client.
+        """Handler for the IRC client registration. NICK and USER are received.
+        This gateway ignores the arguments provided and forces the
+        NICK and USER to be the Flow username. After the registration is complete,
+        all organizations and channels are retrieved from Flow and sent to the IRC client.
         Arguments:
         command : string, IRC command
-        arguments : list, IRC command arguments 
+        arguments : list, IRC command arguments
         """
         if command == "NICK":
             self.nickname = self.gateway.flow_username  # override user provided NICK
@@ -115,7 +116,7 @@ class IRCClient(object):
             pass
 
         def join_handler():
-            """JOIN command is not supported by this gateway. 
+            """JOIN command is not supported by this gateway.
             The user can only be part of the channels provided by the gateway
             """
             pass
@@ -127,7 +128,9 @@ class IRCClient(object):
             pass
 
         def part_handler():
-            """PART command is not supported by this gateway. You cannot leave a Flow channel from the IRC client."""
+            """PART command is not supported by this gateway.
+            You cannot leave a Flow channel from the IRC client.
+            """
             pass
 
         def topic_handler():
@@ -135,7 +138,9 @@ class IRCClient(object):
             pass
 
         def list_handler():
-            """Handler for the LIST IRC command. Flow Channels will return an empty IRC topic."""
+            """Handler for the LIST IRC command.
+            Flow Channels will return an empty IRC topic.
+            """
             if len(arguments) < 1:
                 channels = gateway.channels.values()
             else:
@@ -157,7 +162,8 @@ class IRCClient(object):
 
         def mode_handler():
             """Handler for the MODE IRC command.
-            Flow channels have no MODEs therefore this returns MODE responses with no modes in them.
+            Flow channels have no MODEs therefore this
+            returns MODE responses with no modes in them.
             """
             if len(arguments) < 1:
                 self.reply_461("MODE")
@@ -173,34 +179,42 @@ class IRCClient(object):
             """Handler for the PONG IRC command. Nothing to do here."""
             pass
 
-        def send_to_member(self):
-            sent_to_member = False
+        def start_direct_conversation(self, targetname):
+            """Creates a NewDirectConversation channel.
+            Arguments:
+            targetname : string, format: MemberName(OrganizationName).
+            Returns a 'Channel' instance that represents the direct conversation.
+            Returns 'None' if the direct conversation could not be created.
+            """
+            direct_conversation_channel = None
             items = self.__dc_member_regexp.split(targetname)[1:-1]
             username = items[0]
             organization_name = items[1]
             # Try to get the member from local members
             member = gateway.get_member(targetname)
-            if not member or (member and member.account_id != gateway.flow_account_id):
+            if not member or (member and member.account_id !=
+                              gateway.flow_account_id):
+                # This is an unknown member to this gateway, try to get the
+                # peer data
                 if not member:
-                    # This is an unknown member to this gateway, try to get the peer data
                     member_account_id = gateway.get_member_account_id(username)
                 else:
                     member_account_id = member.account_id
                 if member_account_id:
-                    # Get OrgID from name
                     oid = gateway.get_oid_from_name(organization_name)
                     if oid:
                         direct_conversation_channel = gateway.create_direct_conversation_channel(
                             member_account_id, username, oid, organization_name)
-                        if direct_conversation_channel:
-                            sent_to_member = gateway.transmit_message_to_channel(direct_conversation_channel, message)            
-            return sent_to_member
+            return direct_conversation_channel
 
         def notice_and_privmsg_handler():
             """Handler for the PRIVMSG/NOTICE IRC command.
-            PRIVMSG for a channel: If the channel exists, then it sends the message to the Channel via Flow.SendMessage
-            PRIVMSG for a member: If the member exists and there's no direct conversation within the session, then 
-            a new direct conversation channel is created (with Flow.NewDirectConversation) and the message is sent.
+            PRIVMSG for a channel: If the channel exists,
+            then it sends the message to the Channel via Flow.SendMessage
+            PRIVMSG for a member: If the member exists and
+            there's no direct conversation within the session, then
+            a new direct conversation channel is created
+            (with Flow.NewDirectConversation) and the message is sent.
             """
             privmsg_success = False
             if len(arguments) == 0:
@@ -217,7 +231,10 @@ class IRCClient(object):
                 privmsg_success = gateway.transmit_message_to_channel(
                     channel, message)
             else:
-                privmsg_success = self.send_to_member()
+                channel = start_direct_conversation(targetname)
+                if channel:
+                    privmsg_success = gateway.transmit_message_to_channel(
+                        direct_conversation_channel, message)
             if not privmsg_success:
                 self.reply("401 %s %s :No such nick/channel"
                            % (self.nickname, targetname))
@@ -361,8 +378,12 @@ class IRCClient(object):
     def send_motd(self):
         """Sends the MOTD with the list of organizations, their channels with their member count."""
         self.reply("375 %s :- Message of the day -" % self.nickname)
-        self.reply("372 %s :- Your Flow username is: %s" % (self.nickname, self.nickname))
-        self.reply("372 %s :- List of Organizations and Channels:" % self.nickname)
+        self.reply(
+            "372 %s :- Your Flow username is: %s" %
+            (self.nickname, self.nickname))
+        self.reply(
+            "372 %s :- List of Organizations and Channels:" %
+            self.nickname)
         orgs_channels = self.get_list_of_channels_by_org()
         for org_name, channel_list in orgs_channels.iteritems():
             self.reply("372 %s :  - %s: [%d channels]" %
@@ -406,7 +427,7 @@ class IRCClient(object):
             if member:
                 message_text = message["Text"]
                 if self.gateway.show_timestamps:
-                    message_timestamp = irc_util.get_message_timestamp_string(
+                    message_timestamp = common.get_message_timestamp_string(
                         message["CreationTime"])
                     message_text = message_timestamp + " " + message_text
                 if member.account_id == self.gateway.flow_account_id:
@@ -414,4 +435,8 @@ class IRCClient(object):
                 else:
                     message_nickname = member.get_irc_nickname()
                 self.message(":%s!%s@%s PRIVMSG %s :%s" %
-                             (message_nickname, member.user, member.host, channel.get_irc_name(), message_text))
+                             (message_nickname,
+                              member.user,
+                              member.host,
+                              channel.get_irc_name(),
+                              message_text))

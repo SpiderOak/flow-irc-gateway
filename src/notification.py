@@ -3,17 +3,25 @@ notification.py
 """
 
 import common
-from channel import *
+import Queue
+from channel import ChannelMember, PendingChannel, Channel, DirectChannel
 
 
 class NotificationProcessor(object):
-    """A Flow notifications/event processor. Consumes from the gateway event_queue."""
+    """A Flow notifications/event processor.
+    Consumes from the gateway event_queue.
+    """
 
-    SUPPORTED_NOTIFICATIONS = [ "org", "channel", "message", "channel-member-event" ]
+    SUPPORTED_NOTIFICATIONS = [
+        "org",
+        "channel",
+        "message",
+        "channel-member-event"]
 
     def __init__(self, gateway):
         """Arguments:
-        gateway : FlowIRCGateway instance"""
+        gateway : FlowIRCGateway instance.
+        """
         self.gateway = gateway
 
     def org_notification(self, organizations_data):
@@ -36,10 +44,12 @@ class NotificationProcessor(object):
             assert channel_id
             channel = self.gateway.get_channel(channel_id)
             if channel or oid not in self.gateway.organizations:
-                # If existing channel or unknown organization, then ignore notification
+                # If existing channel or unknown organization, then ignore
+                # notification
                 continue
             organization_name = self.gateway.organizations[oid]
-            self.gateway.pending_channels[channel_id] = PendingChannel(channel_id, "", oid, organization_name)
+            self.gateway.pending_channels[channel_id] = PendingChannel(
+                channel_id, "", oid, organization_name)
 
     def process_channel_message(self, message):
         """Processes the 'ChannelMessages' attribute of 'channel' notifications."""
@@ -51,9 +61,18 @@ class NotificationProcessor(object):
         assert channel_id in self.gateway.pending_channels
         pending_channel = self.gateway.pending_channels[channel_id]
         if direct_channel:
-            channel = DirectChannel(self.gateway, channel_id, pending_channel.oid, pending_channel.organization_name)
+            channel = DirectChannel(
+                self.gateway,
+                channel_id,
+                pending_channel.oid,
+                pending_channel.org_name)
         else:
-            channel = Channel(self.gateway, channel_id, channel_name, pending_channel.oid, pending_channel.org_name)
+            channel = Channel(
+                self.gateway,
+                channel_id,
+                channel_name,
+                pending_channel.oid,
+                pending_channel.org_name)
             self.gateway.check_channel_collision(channel)
 
         self.gateway.get_channel_members(channel)
@@ -77,14 +96,15 @@ class NotificationProcessor(object):
         sender_member = channel.get_member_from_account_id(sender_account_id)
         assert sender_member
         if self.gateway.show_timestamps:
-            message_timestamp = common.get_message_timestamp_string(message["CreationTime"])
+            message_timestamp = common.get_message_timestamp_string(
+                message["CreationTime"])
             message_text = message_timestamp + " " + message_text
         self.gateway.notify_clients(":%s!%s@%s PRIVMSG %s :%s" %
-                            (sender_member.get_irc_nickname(), 
-                             sender_member.user, 
-                             sender_member.host,
-                             channel.get_irc_name(),
-                             message_text))
+                                    (sender_member.get_irc_nickname(),
+                                     sender_member.user,
+                                     sender_member.host,
+                                     channel.get_irc_name(),
+                                     message_text))
 
     def message_notification(self, messages_data):
         """Processes 'message' notifications."""
@@ -102,20 +122,24 @@ class NotificationProcessor(object):
         """Processes 'channel-member-event' notifications."""
         for channel_id in channel_ids:
             channel = self.gateway.get_channel(channel_id)
-            if not channel:  # A channel-member-event may arrive before 'channel' and 'message' notifications
+            # A channel-member-event may arrive before 'channel' and 'message'
+            # notifications
+            if not channel:
                 continue
-            members = self.gateway.flow_service.EnumerateChannelMembers(self.gateway.flow_sid, channel_id)
+            members = self.gateway.flow_service.EnumerateChannelMembers(
+                self.gateway.flow_sid, channel_id)
             for member in members:
-                if not channel.get_member_from_nickname(member["EmailAddress"]):
-                    channel_member = ChannelMember(member["EmailAddress"], 
-                                                   member["AccountID"], 
+                if not channel.get_member_from_nickname(
+                        member["EmailAddress"]):
+                    channel_member = ChannelMember(member["EmailAddress"],
+                                                   member["AccountID"],
                                                    channel.organization_name)
                     channel.add_member(channel_member)
                     self.gateway.notify_clients(":%s!%s@%s JOIN :%s" %
                                                 (channel_member.get_irc_nickname(),
-                                                channel_member.user,
-                                                channel_member.host,
-                                                channel.get_irc_name()))
+                                                 channel_member.user,
+                                                 channel_member.host,
+                                                 channel.get_irc_name()))
 
     def process(self):
         """Loop to process notifications in the gateway event_queue."""
@@ -125,9 +149,15 @@ class NotificationProcessor(object):
             "message": self.message_notification,
             "channel-member-event": self.channel_member_notification,
         }
-        while not self.gateway.event_queue.empty():
-            event = self.gateway.event_queue.get()
+        has_events = True
+        while has_events:
             try:
-                event_handler[event["Type"]](event["Data"])
-            except KeyError:
-                self.gateway.print_debug("Notification of type '%s' not supported." % event["Type"])
+                event = self.gateway.event_queue.get(block=True, timeout=0.05)
+                try:
+                    event_handler[event["Type"]](event["Data"])
+                except KeyError:
+                    self.gateway.print_debug(
+                        "Notification of type '%s' not supported." %
+                        event["Type"])
+            except Queue.Empty:
+                has_events = False

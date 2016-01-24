@@ -32,14 +32,15 @@ class ChannelMember(object):
 class Channel(object):
     """Represents a IRC/Flow Channel"""
 
-    def __init__(self, gateway, channel_id, channel_name="", organization_id="", organization_name=""):
+    def __init__(self, gateway, channel_id, channel_name="",
+                 organization_id="", organization_name=""):
         """Arguments:
         gateway : FlowIRCGateway, reference to the FlowIRCGateway object
         channel_id : string, Channel's ChannelID
         channel_name : string, Channel's Name
         organization_id : string, Organization's OrgID
         organization_name : string, Organization's Name
-        """        
+        """
         self.gateway = gateway
         self.members = set()  # set of "ChannelMember"
         self.channel_id = channel_id
@@ -75,7 +76,7 @@ class Channel(object):
         return None
 
     def get_member_from_nickname(self, nickname):
-        """Returns the member within this channel given a nickname. 
+        """Returns the member within this channel given a nickname.
         The input nickname is escaped with common.irc_escape()
         Arguments:
         nickname : string, represents the member username/nickname
@@ -100,17 +101,24 @@ class DirectChannel(Channel):
     def __init__(self, gateway, channel_id, organization_id="",
                  organization_name="", created_on_irc_session=False):
         """Arguments:
-        created_on_irc_session : Boolean, Sets whether the direct conversation 
+        created_on_irc_session : Boolean, Sets whether the direct conversation
         was started from the IRC client on the current IRC session.
         """
-        super(DirectChannel, self).__init__(gateway, channel_id, "", organization_id, organization_name)
+        super(
+            DirectChannel,
+            self).__init__(
+            gateway,
+            channel_id,
+            "",
+            organization_id,
+            organization_name)
         self.created_on_irc_session = created_on_irc_session
 
     def get_irc_name(self):
-        """Returns the IRC name of the Channel. 
+        """Returns the IRC name of the Channel.
         If the channel was created on the current IRC session, then it returns the following:
             #OtherMember(OrganizationName)
-        If the conversation was not created on the current IRC session or it was started by the other member, 
+        If the conversation was not created on the current IRC session or it was started by the other member,
         then the following is returned:
             #OtherMember(OrganizationName)-Suffix
         """
@@ -129,5 +137,8 @@ class DirectChannel(Channel):
                 return member
         return None
 
-# Tuple to store 'channel' notifications data until the first 'message' notification arrives
-PendingChannel = namedtuple("PendingChannel", ["id", "name", "oid", "org_name"])
+# Tuple to store 'channel' notifications data until the first 'message'
+# notification arrives
+PendingChannel = namedtuple(
+    "PendingChannel", [
+        "id", "name", "oid", "org_name"])
