@@ -10,26 +10,43 @@ import requests
 
 
 class Flow(object):
+    """Class to interact with the Flow API.
+    Request/Responses are synchronous.
+    """
 
     class FlowError(Exception):
+        """Exception class for Flow related errors"""
         pass
 
-    def __init__(self, flowappgluebinary_path, debug=False):
-        """Starts the flowappglue local server"""
+    def __init__(self, flowappglue, debug=False):
+        """Starts the flowappglue local server
+        Arguments:
+        flowappgluebinary_path : string, path to the flowappglue binary
+        debug : Boolean
+        """
         self.debug = debug
-        self._StartFlowAppGlue(flowappgluebinary_path)
+        self._StartFlowAppGlue(flowappglue)
 
     def Terminate(self):
-        """Must be called when you are done using the Flow API"""
+        """Shuts down the flowappglue local server.
+        It must be called when you are done using the Flow API.
+        """
         if self._flowappglue:
             self._flowappglue.terminate()
 
     def _print_debug(self, msg):
+        """Prints msg debug strings to stdout (if self.debug is True)"""
         if self.debug:
             print(msg.encode('utf-8'))
             sys.stdout.flush()
 
     def _Run(self, method, **params):
+        """Performs the HTTP JSON POST against the flowappglue server on localhost.
+        Arguments:
+        method : string, API method name.
+        params : kwargs, request parameters.
+        Returns a JSON dict with the response received from the flowappglue, it returns the 'result' part of the response.
+        """
         request_str = json.dumps(
             dict(
                 method=method,
@@ -40,12 +57,11 @@ class Flow(object):
             response = requests.post(
                 "http://localhost:%s/rpc" %
                 self._port,
-                headers={
-                    'Content-type': 'application/json'},
+                headers={ 'Content-type': 'application/json' },
                 data=request_str)
         except requests.exceptions.ConnectionError as e:
             raise Flow.FlowError(str(e))
-        response_data = json.loads(response.text)
+        response_data = json.loads(response.text, encoding='utf-8')
         self._print_debug(
             "response: HTTP %s : %s" %
             (response.status_code, response.text))
@@ -57,6 +73,7 @@ class Flow(object):
             return response_data
 
     def _StartFlowAppGlue(self, flowappgluebinary_path):
+        """Starts the flowappglue local server as a subprocess"""
         self._flowappglue = subprocess.Popen(
             [flowappgluebinary_path, "0"], stdout=subprocess.PIPE)
         token_port_line = json.loads(self._flowappglue.stdout.readline())
