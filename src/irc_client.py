@@ -74,6 +74,35 @@ class IRCClient(object):
                         arguments.append(y[1])
             self.__handle_command(command, arguments)
 
+
+    def start_direct_conversation(self, targetname):
+        """Creates a NewDirectConversation channel.
+        Arguments:
+        targetname : string, format: MemberName(OrganizationName).
+        Returns a 'Channel' instance that represents the direct conversation.
+        Returns 'None' if the direct conversation could not be created.
+        """
+        direct_conversation_channel = None
+        items = self.__dc_member_regexp.split(targetname)[1:-1]
+        username = items[0]
+        organization_name = items[1]
+        # Try to get the member from local members
+        member = self.gateway.get_member(targetname)
+        if not member or (member and member.account_id !=
+                          self.gateway.flow_account_id):
+            # This is an unknown member to this gateway, try to get the
+            # peer data
+            if not member:
+                member_account_id = self.gateway.get_member_account_id(username)
+            else:
+                member_account_id = member.account_id
+            if member_account_id:
+                oid = self.gateway.get_oid_from_name(organization_name)
+                if oid:
+                    direct_conversation_channel = self.gateway.create_direct_conversation_channel(
+                        member_account_id, username, oid, organization_name)
+        return direct_conversation_channel
+
     def send_welcome(self):
         """Sends the Welcome Message to the IRC client connection"""
         self.reply("001 %s :Hi, welcome to Flow" % self.nickname)
@@ -102,8 +131,10 @@ class IRCClient(object):
             self.send_lusers()
             self.send_motd()
             self.send_nick_data()
-            self.send_channels_data()
+            for channel in self.gateway.channels.values():
+                self.send_channel_data(channel)
             self.__handle_command = self.__command_handler
+            self.gateway.client_connected.set()
 
     def __command_handler(self, command, arguments):
         """IRC commands handler."""
@@ -179,34 +210,6 @@ class IRCClient(object):
             """Handler for the PONG IRC command. Nothing to do here."""
             pass
 
-        def start_direct_conversation(self, targetname):
-            """Creates a NewDirectConversation channel.
-            Arguments:
-            targetname : string, format: MemberName(OrganizationName).
-            Returns a 'Channel' instance that represents the direct conversation.
-            Returns 'None' if the direct conversation could not be created.
-            """
-            direct_conversation_channel = None
-            items = self.__dc_member_regexp.split(targetname)[1:-1]
-            username = items[0]
-            organization_name = items[1]
-            # Try to get the member from local members
-            member = gateway.get_member(targetname)
-            if not member or (member and member.account_id !=
-                              gateway.flow_account_id):
-                # This is an unknown member to this gateway, try to get the
-                # peer data
-                if not member:
-                    member_account_id = gateway.get_member_account_id(username)
-                else:
-                    member_account_id = member.account_id
-                if member_account_id:
-                    oid = gateway.get_oid_from_name(organization_name)
-                    if oid:
-                        direct_conversation_channel = gateway.create_direct_conversation_channel(
-                            member_account_id, username, oid, organization_name)
-            return direct_conversation_channel
-
         def notice_and_privmsg_handler():
             """Handler for the PRIVMSG/NOTICE IRC command.
             PRIVMSG for a channel: If the channel exists,
@@ -231,10 +234,9 @@ class IRCClient(object):
                 privmsg_success = gateway.transmit_message_to_channel(
                     channel, message)
             else:
-                channel = start_direct_conversation(targetname)
+                channel = self.start_direct_conversation(targetname)
                 if channel:
-                    privmsg_success = gateway.transmit_message_to_channel(
-                        direct_conversation_channel, message)
+                    privmsg_success = gateway.transmit_message_to_channel(channel, message)
             if not privmsg_success:
                 self.reply("401 %s %s :No such nick/channel"
                            % (self.nickname, targetname))
@@ -349,6 +351,7 @@ class IRCClient(object):
                 self.host, self.port, quitmsg))
         self.socket.close()
         self.gateway.remove_client(self)
+        self.gateway.client_connected.clear()
 
     def message(self, msg):
         """Writes to the self.__writebuffer buffer, to be send via socket_writable_notification()."""
@@ -400,11 +403,13 @@ class IRCClient(object):
         self.message(":%s!%s@%s NICK :%s" %
                      (self.nickname, self.user, self.host, self.nickname))
 
-    def send_channels_data(self):
-        """Sends the channel and messages data to the IRC client connection."""
-        for channel in self.gateway.channels.values():
-            self.send_channel_join_commands(channel)
-            self.send_channel_messages(channel)
+    def send_channel_data(self, channel):
+        """Sends channel JOINs and messages to the IRC client connection.
+        Arguments:
+        channel : Channel instance
+        """
+        self.send_channel_join_commands(channel)
+        self.send_channel_messages(channel)
 
     def send_channel_join_commands(self, channel):
         """Sends the Channel JOIN commands to the IRC client connection."""

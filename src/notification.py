@@ -33,6 +33,11 @@ class NotificationProcessor(object):
             assert oid
             assert organization_name
             self.gateway.organizations[oid] = organization_name
+            self.gateway.get_channels(oid, organization_name)
+            for channel in self.gateway.channels.values():
+                if channel.organization_id == oid:
+                    for client in self.gateway.clients.values():
+                        client.send_channel_data(channel)
 
     def channel_notification(self, channels_data):
         """Processes 'channel' notifications."""
@@ -58,7 +63,9 @@ class NotificationProcessor(object):
         direct_channel = message["Purpose"] == "direct message"
         assert channel_id
         assert channel_name or direct_channel
-        assert channel_id in self.gateway.pending_channels
+        # ChannelMessage notifications may arrive from NewDirectConversation started by the client
+        if channel_id not in self.gateway.pending_channels:
+            return
         pending_channel = self.gateway.pending_channels[channel_id]
         if direct_channel:
             channel = DirectChannel(
@@ -92,7 +99,9 @@ class NotificationProcessor(object):
         assert channel_id
         assert message_text
         channel = self.gateway.get_channel(channel_id)
-        assert channel
+        # 'channel' notification not received yet (this can happen on some occasions, TODO: investigate)
+        if not channel:  
+            return
         sender_member = channel.get_member_from_account_id(sender_account_id)
         assert sender_member
         if self.gateway.show_timestamps:
