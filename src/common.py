@@ -2,7 +2,7 @@
 common.py
 """
 
-VERSION = "1.0"
+VERSION = "0.1"
 CONFIG_FILE_SECTION = "flow-irc-gateway"
 
 from datetime import datetime

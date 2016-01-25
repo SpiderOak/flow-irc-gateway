@@ -63,7 +63,8 @@ class NotificationProcessor(object):
         direct_channel = message["Purpose"] == "direct message"
         assert channel_id
         assert channel_name or direct_channel
-        # ChannelMessage notifications may arrive from NewDirectConversation started by the client
+        # ChannelMessage notifications may arrive from NewDirectConversation
+        # started by the client
         if channel_id not in self.gateway.pending_channels:
             return
         pending_channel = self.gateway.pending_channels[channel_id]
@@ -100,7 +101,7 @@ class NotificationProcessor(object):
         assert message_text
         channel = self.gateway.get_channel(channel_id)
         # 'channel' notification not received yet (this can happen on some occasions, TODO: investigate)
-        if not channel:  
+        if not channel:
             return
         sender_member = channel.get_member_from_account_id(sender_account_id)
         assert sender_member

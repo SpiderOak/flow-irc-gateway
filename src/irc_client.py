@@ -74,7 +74,6 @@ class IRCClient(object):
                         arguments.append(y[1])
             self.__handle_command(command, arguments)
 
-
     def start_direct_conversation(self, targetname):
         """Creates a NewDirectConversation channel.
         Arguments:
@@ -93,7 +92,8 @@ class IRCClient(object):
             # This is an unknown member to this gateway, try to get the
             # peer data
             if not member:
-                member_account_id = self.gateway.get_member_account_id(username)
+                member_account_id = self.gateway.get_member_account_id(
+                    username)
             else:
                 member_account_id = member.account_id
             if member_account_id:
@@ -236,7 +236,8 @@ class IRCClient(object):
             else:
                 channel = self.start_direct_conversation(targetname)
                 if channel:
-                    privmsg_success = gateway.transmit_message_to_channel(channel, message)
+                    privmsg_success = gateway.transmit_message_to_channel(
+                        channel, message)
             if not privmsg_success:
                 self.reply("401 %s %s :No such nick/channel"
                            % (self.nickname, targetname))

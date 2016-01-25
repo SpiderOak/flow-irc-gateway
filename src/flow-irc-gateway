@@ -19,7 +19,6 @@
 #
 # Joel Rosdahl <joel@rosdahl.net>
 
-
 import os
 import select
 import socket
@@ -199,7 +198,7 @@ class FlowIRCGateway(object):
                     self, channel["ID"], channel_name, oid, org_name)
                 self.check_channel_collision(irc_channel)
             self.get_channel_members(irc_channel)
-            self.add_channel(irc_channel)        
+            self.add_channel(irc_channel)
 
     def get_orgs_and_channels(self):
         """Loads all Organizations and Channels the account is member of."""
@@ -319,9 +318,9 @@ class FlowIRCGateway(object):
             try:
                 change = flow.WaitForNotification(sid)
                 if self.client_connected.is_set() and \
-                change and \
-                "Type" in change and \
-                change["Type"] in NotificationProcessor.SUPPORTED_NOTIFICATIONS:
+                        change and \
+                        "Type" in change and \
+                        change["Type"] in NotificationProcessor.SUPPORTED_NOTIFICATIONS:
                     event_queue.put(change)
             except Flow.FlowError:
                 pass
