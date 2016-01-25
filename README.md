@@ -31,6 +31,8 @@ $ sudo python setup.py install
 
 ```
 $ flow-irc-gateway --config config.cfg --username username@site.com
+...
+# You can now connect your IRC client to localhost:6667
 ```
 
 ## Configuration
@@ -54,6 +56,11 @@ List of config variables:
 See a sample configuration file under: `config/config.example.cfg`
 
 ## IRC Clients Configuration and Commands
+
+- Channels are displayed as `#ChannelName(OrganizationName)`, if there are channel name collisions, then a '-' and the first 5 characters of the ChannelID are appended.
+- Members are displayed as `MemberName(OrganizationName)`
+- Direct Conversation started from the IRC client (in-session) are displayed as `MemberName(OrganizationName)`, see below on how you can start one from each IRC client.
+- Loaded Direct Conversations are displayed as `MemberName(OrganizationName)-$ID`, where ID are the first 5 characters of the ChannelID. This is so you can have more than one Direct Conversation with the same member.
 
 ### irssi:
 ```
