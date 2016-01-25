@@ -29,10 +29,16 @@ $ sudo python setup.py install
 
 ## Run
 
+If installed:
 ```
 $ flow-irc-gateway --config config.cfg --username username@site.com
 ...
 # You can now connect your IRC client to localhost:6667
+```
+If not installed, install `python-requests` first, then run:
+```
+$ cd src
+$ ./flow-irc-gateway --config config.cfg --username username@site.com
 ```
 
 ## Configuration
@@ -127,4 +133,5 @@ The gateway currently adds the five first chars of the ChannelID as a suffix to 
 - Add unit test to the Flow module, and to flow-irc-gateway itself.
 - Process "org-member-event" notifications to notify of other member joining organizations the user is part of.
 - Print debug output to a log file.
+- Many sections of the code assume the existence of simultaneuos IRC client connections (see variable self.clients in [src/flow-irc-gateway.py](src/flow-irc-gateway.py)). This needs to be cleaned up, the gateway only support one IRC client connection at a time.
 
