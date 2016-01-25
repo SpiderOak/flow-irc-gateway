@@ -83,6 +83,8 @@ class IRCClient(object):
         """
         direct_conversation_channel = None
         items = self.__dc_member_regexp.split(targetname)[1:-1]
+        if len(items) != 2:
+            return
         username = items[0]
         organization_name = items[1]
         # Try to get the member from local members
