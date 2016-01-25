@@ -20,7 +20,7 @@ The user can then use the IRC client just like on any IRC network.
 
 ## Installation
 
-Run the following on the command line:
+Run the following on the command line: (uses `python-setuptools`)
 ```
 $ git clone https://github.com/SpiderOak/flow-irc-gateway.git
 $ cd flow-irc-gateway
@@ -30,7 +30,7 @@ $ sudo python setup.py install
 ## Run
 
 ```
-$ flow-irc-gateway --config config.cfg --username=username@site.com
+$ flow-irc-gateway --config config.cfg --username username@site.com
 ```
 
 ## Configuration
