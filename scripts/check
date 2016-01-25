@@ -1,0 +1,37 @@
+#! /bin/bash
+# Script to run static analysis checks on the python sources
+# usage to check files: 
+# ./check 
+# usage to format files:
+# ,/check --format
+
+SOURCES_DIR="../src"
+SOURCES="\
+$SOURCES_DIR/common.py \
+$SOURCES_DIR/channel.py \
+$SOURCES_DIR/notification.py \
+$SOURCES_DIR/irc_client.py \
+$SOURCES_DIR/flow/flow_api.py \
+$SOURCES_DIR/flow-irc-gateway \
+"
+
+command_exists () {
+    type "$1" &>/dev/null ;
+}
+
+execute() {
+    if command_exists $1 ; then
+            echo "Executing $1..."
+            $1 $SOURCES
+    else
+        echo "Skipping $1 (not installed)."
+    fi
+}
+
+if [ $1 == "--format" ] ; then
+    execute "autopep8 -va --in-place --max-line-length 79"
+else
+    execute vulture
+    execute pyflakes
+    execute pep8
+fi
