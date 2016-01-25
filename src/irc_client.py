@@ -121,9 +121,11 @@ class IRCClient(object):
         arguments : list, IRC command arguments
         """
         if command == "NICK":
-            self.nickname = self.gateway.flow_username  # override user provided NICK
+            self.nickname = common.irc_escape(
+                self.gateway.flow_username)  # override user provided NICK
         elif command == "USER":
-            self.user = self.gateway.flow_username  # override user provided USER
+            self.user = common.irc_escape(
+                self.gateway.flow_username)  # override user provided USER
         elif command == "QUIT":
             self.disconnect("Client quit")
             return

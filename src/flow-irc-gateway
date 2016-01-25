@@ -402,6 +402,11 @@ def parse_options_and_config(argv):
     if not options.config:
         op.error("Missing config file argument: '--config'")
 
+    if not os.path.isfile(options.config):
+        op.error(
+            "Cannot access '%s', no such file or directory." %
+            options.config)
+
     config = ConfigParser.RawConfigParser()
     config.read(options.config)
 
@@ -419,6 +424,18 @@ def parse_options_and_config(argv):
     options.schema = config.get(common.CONFIG_FILE_SECTION, "schema")
     options.uri = config.get(common.CONFIG_FILE_SECTION, "uri")
     options.flowappglue = config.get(common.CONFIG_FILE_SECTION, "flowappglue")
+
+    if not os.path.isfile(options.flowappglue):
+        op.error(
+            "Cannot access '%s', no such file or directory." %
+            options.flowappglue)
+    if not os.path.exists(options.schema):
+        op.error(
+            "Cannot access '%s', no such file or directory." %
+            options.schema)
+    if not os.path.exists(options.db):
+        op.error("Cannot access '%s', no such file or directory." % options.db)
+
     try:
         options.debug = config.getboolean(common.CONFIG_FILE_SECTION, "debug")
     except ConfigParser.NoOptionError:

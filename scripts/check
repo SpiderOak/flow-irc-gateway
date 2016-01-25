@@ -28,7 +28,7 @@ execute() {
     fi
 }
 
-if [ $1 == "--format" ] ; then
+if [ "$1" == "--format" ] ; then
     execute "autopep8 -va --in-place --max-line-length 79"
 else
     execute vulture
