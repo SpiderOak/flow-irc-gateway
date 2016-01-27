@@ -17,6 +17,7 @@ The user can then use the IRC client just like on any IRC network.
 - Supported IRC commands: 'LIST', 'PRIVMSG', 'WHOIS', 'WHO', 'MOTD', 'MODE' & 'LUSERS'.
 - Tested with weechat, irssi and xchat/hexchat.
 - The gateway uses UTF-8 encoding.
+- Makes use of the Flow API Python Module ([src/flow/](src/flow/))
 
 ## Installation
 
@@ -39,6 +40,8 @@ If not installed, install `python-requests` first, then run:
 ```
 $ cd src
 $ ./flow-irc-gateway --config config.cfg --username username@site.com
+...
+# You can now connect your IRC client to localhost:6667
 ```
 
 ## Configuration
@@ -59,7 +62,7 @@ List of config variables:
 - `irc-ports`: IRC listen ports (a list separated by comma or whitespace)
 - `daemon`: Fork and become a daemon.
 
-See a sample configuration file under: `config/config.example.cfg`
+See a sample configuration file under [config/config.example.cfg](config/config.example.cfg).
 
 ## IRC Clients Configuration and Commands
 
