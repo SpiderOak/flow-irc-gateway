@@ -19,13 +19,17 @@ class Flow(object):
         pass
 
     def __init__(self, flowappglue, debug=False):
-        """Starts the flowappglue local server
+        """Starts the flowappglue local server as a subprocess.
         Arguments:
-        flowappgluebinary_path : string, path to the flowappglue binary
-        debug : Boolean
+        flowappglue : string, path to the flowappglue binary
+        debug : boolean
         """
         self.debug = debug
-        self._StartFlowAppGlue(flowappglue)
+        self._flowappglue = subprocess.Popen(
+            [flowappglue, "0"], stdout=subprocess.PIPE)
+        token_port_line = json.loads(self._flowappglue.stdout.readline())
+        self._token = token_port_line["token"]
+        self._port = token_port_line["port"]
 
     def Terminate(self):
         """Shuts down the flowappglue local server.
@@ -41,11 +45,12 @@ class Flow(object):
             sys.stdout.flush()
 
     def _Run(self, method, **params):
-        """Performs the HTTP JSON POST against the flowappglue server on localhost.
+        """Performs the HTTP JSON POST against
+        the flowappglue server on localhost.
         Arguments:
         method : string, API method name.
         params : kwargs, request parameters.
-        Returns a JSON dict with the response received from the flowappglue,
+        Returns a dict with the response received from the flowappglue,
         it returns the 'result' part of the response.
         """
         request_str = json.dumps(
@@ -60,8 +65,8 @@ class Flow(object):
                 self._port,
                 headers={'Content-type': 'application/json'},
                 data=request_str)
-        except requests.exceptions.ConnectionError as e:
-            raise Flow.FlowError(str(e))
+        except requests.exceptions.ConnectionError as flow_err:
+            raise Flow.FlowError(str(flow_err))
         response_data = json.loads(response.text, encoding='utf-8')
         self._print_debug(
             "response: HTTP %s : %s" %
@@ -73,14 +78,6 @@ class Flow(object):
         else:
             return response_data
 
-    def _StartFlowAppGlue(self, flowappgluebinary_path):
-        """Starts the flowappglue local server as a subprocess"""
-        self._flowappglue = subprocess.Popen(
-            [flowappgluebinary_path, "0"], stdout=subprocess.PIPE)
-        token_port_line = json.loads(self._flowappglue.stdout.readline())
-        self._token = token_port_line["token"]
-        self._port = token_port_line["port"]
-
     def Config(
             self,
             flow_serv_host,
@@ -88,8 +85,9 @@ class Flow(object):
             flow_local_database_dir,
             flow_local_schema_dir,
             use_tls="true"):
-        """Sets up the basic configuration parameters for FlowApp to talk FlowServ
-        and create local accounts. Returns 'null'.
+        """Sets up the basic configuration parameters
+        for FlowApp to talk FlowServ and
+        create local accounts. Returns 'null'.
         """
         self._Run(method="Config",
                   FlowServHost=flow_serv_host,
@@ -161,13 +159,17 @@ class Flow(object):
                          )
 
     def EnumerateOrgs(self, sid):
-        """Lists all the orgs the caller is a member of. Returns array of 'Org' dicts."""
+        """Lists all the orgs the caller is a member of.
+        Returns array of 'Org' dicts.
+        """
         return self._Run(method="EnumerateOrgs",
                          SessionID=sid,
                          )
 
     def EnumerateChannels(self, sid, oid):
-        """Lists the channels available for an 'OrgID'. Returns an array of 'Channel' dicts."""
+        """Lists the channels available for an 'OrgID'.
+        Returns an array of 'Channel' dicts.
+        """
         return self._Run(method="EnumerateChannels",
                          SessionID=sid,
                          OrgID=oid,
@@ -184,7 +186,8 @@ class Flow(object):
 
     def SendMessage(self, sid, oid, cid, msg, other_data={}):
         """Sends a message to a channel this user is a member of.
-        Returns a string that represents the 'MessageID' that has just been sent.
+        Returns a string that represents the 'MessageID'
+        that has just been sent.
         """
         return self._Run(method="SendMessage",
                          SessionID=sid,
@@ -195,9 +198,11 @@ class Flow(object):
                          )
 
     def WaitForNotification(self, sid):
-        """Returns the oldest unseen notification in the queue for this device.
-        WARNING: it will block until there's a new notification if there isn't any at
-        the time it is called. It's advised to call this method in a thread outside of
+        """Returns the oldest unseen notification
+        in the queue for this device.
+        WARNING: it will block until there's a new notification
+        if there isn't any at the time it is called.
+        It's advised to call this method in a thread outside of
         the main one. Returns a 'Change' dict.
         """
         return self._Run(method="WaitForNotification",
@@ -205,7 +210,9 @@ class Flow(object):
                          )
 
     def EnumerateMessages(self, sid, oid, cid, filters={}):
-        """Lists all the messages for a channel. Returns an array of 'Message' dicts"""
+        """Lists all the messages for a channel.
+        Returns an array of 'Message' dicts.
+        """
         return self._Run(method="EnumerateMessages",
                          SessionID=sid,
                          OrgID=oid,
@@ -223,7 +230,9 @@ class Flow(object):
                          )
 
     def NewOrgJoinRequest(self, sid, oid):
-        """Creates a new request to join an existing organization. Return 'null'."""
+        """Creates a new request to join an existing organization.
+        Returns 'null'.
+        """
         return self._Run(method="NewOrgJoinRequest",
                          SessionID=sid,
                          OrgID=oid,
@@ -264,7 +273,8 @@ class Flow(object):
                          )
 
     def NewDirectConversation(self, sid, oid, account_id):
-        """Creates a new channel to initiate a direct conversation with another user.
+        """Creates a new channel to initiate a
+        direct conversation with another user.
         Returns a 'ChannelID'.
         """
         return self._Run(method="NewDirectConversation",

@@ -15,17 +15,17 @@ class IRCClient(object):
     __linesep_regexp = re.compile(r"\r?\n")
     __dc_member_regexp = re.compile(r"(.+)\((.+)\)")
 
-    def __init__(self, gateway, socket):
+    def __init__(self, gateway, client_socket):
         """Arguments:
         gateway : FlowIRCGateway instance
-        socket : socket instance
+        client_socket : socket instance
         """
         self.gateway = gateway
-        self.socket = socket
+        self.client_socket = client_socket
         self.nickname = ""
         self.user = ""
         self.realname = ""
-        (self.host, self.port) = socket.getpeername()
+        (self.host, self.port) = client_socket.getpeername()
         self.__timestamp = time.time()
         self.__readbuffer = ""
         self.__writebuffer = ""
@@ -33,7 +33,9 @@ class IRCClient(object):
         self.__handle_command = self.__registration_handler
 
     def check_aliveness(self):
-        """Checks whether the IRC client connection is alive. Uses IRC's PING command."""
+        """Checks whether the IRC client connection is alive.
+        Uses IRC's PING command.
+        """
         now = time.time()
         if self.__timestamp + 180 < now:
             self.disconnect("ping timeout")
@@ -60,18 +62,19 @@ class IRCClient(object):
             if not line:
                 # Empty line. Ignore.
                 continue
-            x = line.split(" ", 1)
-            command = x[0].upper()
-            if len(x) == 1:
+            command_and_args = line.split(" ", 1)
+            command = command_and_args[0].upper()
+            if len(command_and_args) == 1:
                 arguments = []
             else:
-                if len(x[1]) > 0 and x[1][0] == ":":
-                    arguments = [x[1][1:]]
+                if len(command_and_args[1]) > 0 and command_and_args[
+                        1][0] == ":":
+                    arguments = [command_and_args[1][1:]]
                 else:
-                    y = string.split(x[1], " :", 1)
-                    arguments = string.split(y[0])
-                    if len(y) == 2:
-                        arguments.append(y[1])
+                    args_string = string.split(command_and_args[1], " :", 1)
+                    arguments = string.split(args_string[0])
+                    if len(args_string) == 2:
+                        arguments.append(args_string[1])
             self.__handle_command(command, arguments)
 
     def start_direct_conversation(self, targetname):
@@ -101,24 +104,29 @@ class IRCClient(object):
             if member_account_id:
                 oid = self.gateway.get_oid_from_name(organization_name)
                 if oid:
-                    direct_conversation_channel = self.gateway.create_direct_conversation_channel(
-                        member_account_id, username, oid, organization_name)
+                    direct_conversation_channel = \
+                        self.gateway.create_direct_conversation_channel(
+                            member_account_id, username, oid, organization_name
+                        )
         return direct_conversation_channel
 
     def send_welcome(self):
         """Sends the Welcome Message to the IRC client connection"""
         self.reply("001 %s :Hi, welcome to Flow" % self.nickname)
-        self.reply("002 %s :Your host is %s, running version flow-irc-gateway-%s" %
+        self.reply("002 %s :Your host is %s, "
+                   "running version flow-irc-gateway-%s" %
                    (self.nickname, self.gateway.name, common.VERSION))
 
     def __registration_handler(self, command, arguments):
-        """Handler for the IRC client registration. NICK and USER are received.
+        """Handler for the IRC client registration.
+        NICK and USER are received.
         This gateway ignores the arguments provided and forces the
-        NICK and USER to be the Flow username. After the registration is complete,
-        all organizations and channels are retrieved from Flow and sent to the IRC client.
+        NICK and USER to be the Flow username.
+        After the registration is complete, all organizations and channels
+        are retrieved from Flow and sent to the IRC client.
         Arguments:
         command : string, IRC command
-        arguments : list, IRC command arguments
+        arguments : list, IRC command arguments (argument ignored)
         """
         if command == "NICK":
             self.nickname = common.irc_escape(
@@ -152,13 +160,14 @@ class IRCClient(object):
 
         def join_handler():
             """JOIN command is not supported by this gateway.
-            The user can only be part of the channels provided by the gateway
+            The user can only be part of the channels provided by the gateway.
             """
             pass
 
         def nick_handler():
             """NICK command is not supported by this gateway.
-            After the user has registered, this gateway does not allow IRC NICK change.
+            After the user has registered,
+            this gateway does not allow IRC NICK change.
             """
             pass
 
@@ -201,7 +210,6 @@ class IRCClient(object):
             returns MODE responses with no modes in them.
             """
             if len(arguments) < 1:
-                self.reply_461("MODE")
                 return
             targetname = arguments[0]
             self.reply("324 %s %s" % (self.nickname, targetname))
@@ -270,8 +278,12 @@ class IRCClient(object):
             if channel:
                 for member in channel.members:
                     self.reply("352 %s %s %s %s %s %s H :0 %s"
-                               % (self.nickname, targetname, member.user,
-                                  member.host, gateway.name, member.get_irc_nickname(),
+                               % (self.nickname,
+                                  targetname,
+                                  member.user,
+                                  member.host,
+                                  gateway.name,
+                                  member.get_irc_nickname(),
                                   member.realname))
                 self.reply("315 %s %s :End of WHO list"
                            % (self.nickname, targetname))
@@ -284,10 +296,16 @@ class IRCClient(object):
             member = gateway.get_member(membername)
             if member:
                 self.reply("311 %s %s %s %s * :%s"
-                           % (self.nickname, member.get_irc_nickname(), member.user,
-                              member.host, member.realname))
+                           % (self.nickname,
+                              member.get_irc_nickname(),
+                              member.user,
+                              member.host,
+                              member.realname))
                 self.reply("312 %s %s %s :%s"
-                           % (self.nickname, member.get_irc_nickname(), "", ""))
+                           % (self.nickname,
+                              member.get_irc_nickname(),
+                              "",
+                              ""))
                 self.reply("318 %s %s :End of WHOIS list"
                            % (self.nickname, member.get_irc_nickname()))
             else:
@@ -320,15 +338,17 @@ class IRCClient(object):
             self.reply("421 %s %s :Unknown command" % (self.nickname, command))
 
     def socket_readable_notification(self):
-        """Reads data from the IRC client socket (the data is written to self.__readbuffer)."""
+        """Reads data from the IRC client socket
+        (the data is written to self.__readbuffer).
+        """
         try:
-            data = (self.socket.recv(2 ** 10)).decode('utf-8')
+            data = (self.client_socket.recv(2 ** 10)).decode('utf-8')
             self.gateway.print_debug(
                 "[%s:%d] -> %r" % (self.host, self.port, data))
             quitmsg = "EOT"
-        except socket.error as x:
+        except socket.error as sock_err:
             data = ""
-            quitmsg = x
+            quitmsg = sock_err
         if data:
             self.__readbuffer += data
             self.__parse_read_buffer()
@@ -340,26 +360,30 @@ class IRCClient(object):
     def socket_writable_notification(self):
         """Sends data to IRC client socket (using self.__writebuffer)."""
         try:
-            sent = self.socket.send(self.__writebuffer.encode('utf-8'))
+            sent = self.client_socket.send(self.__writebuffer.encode('utf-8'))
             self.gateway.print_debug(
                 "[%s:%d] <- %r" % (
                     self.host, self.port, self.__writebuffer[:sent]))
             self.__writebuffer = self.__writebuffer[sent:]
-        except socket.error as x:
-            self.disconnect(x)
+        except socket.error as sock_err:
+            self.disconnect(sock_err)
 
     def disconnect(self, quitmsg):
-        """Closes the socket for this IRC client and it is removed from the client list."""
+        """Closes the socket for this IRC client and
+        it is removed from the client list.
+        """
         self.message("ERROR :%s" % quitmsg)
         self.gateway.print_info(
             "Disconnected connection from %s:%s (%s)." % (
                 self.host, self.port, quitmsg))
-        self.socket.close()
+        self.client_socket.close()
         self.gateway.remove_client(self)
         self.gateway.client_connected.clear()
 
     def message(self, msg):
-        """Writes to the self.__writebuffer buffer, to be send via socket_writable_notification()."""
+        """Writes to the self.__writebuffer buffer,
+        to be send via socket_writable_notification().
+        """
         self.__writebuffer += msg + "\r\n"
 
     def reply(self, msg):
@@ -369,22 +393,30 @@ class IRCClient(object):
     def send_lusers(self):
         """Replies the IRC client connection with LUSERS response data."""
         self.reply("251 %s :There are %d orgs and %d channels"
-                   % (self.nickname, len(self.gateway.organizations), len(self.gateway.channels)))
+                   % (self.nickname,
+                      len(self.gateway.organizations),
+                      len(self.gateway.channels)))
 
     def get_list_of_channels_by_org(self):
-        """Returns a map of OrgName -> [(ChannelName, IsDirectConversation, ChannelMemberCount)]."""
+        """Returns a map of
+        OrgName -> [(ChannelName, IsDirectConversation, ChannelMemberCount)].
+        """
         orgs_channels = {}
         for org_name in self.gateway.organizations.values():
             orgs_channels[org_name] = []
         for channel in self.gateway.channels.values():
             orgs_channels[channel.organization_name].append(
-                (channel.get_irc_name(), isinstance(channel, DirectChannel), len(channel.members)))
+                (channel.get_irc_name(),
+                 isinstance(channel, DirectChannel),
+                 len(channel.members)))
         for channels in orgs_channels.values():
             channels.sort()
         return orgs_channels
 
     def send_motd(self):
-        """Sends the MOTD with the list of organizations, their channels with their member count."""
+        """Sends the MOTD with the list of organizations,
+        their channels with their member count.
+        """
         self.reply("375 %s :- Message of the day -" % self.nickname)
         self.reply(
             "372 %s :- Your Flow username is: %s" %
@@ -420,17 +452,27 @@ class IRCClient(object):
         """Sends the Channel JOIN commands to the IRC client connection."""
         # JOIN command for the current user
         self.message(":%s!%s@%s JOIN :%s" %
-                     (self.nickname, self.user, self.host, channel.get_irc_name()))
+                     (self.nickname,
+                      self.user,
+                      self.host,
+                      channel.get_irc_name()))
         # Then, JOIN for the remaining members
         for member in channel.members:
             if member.account_id != self.gateway.flow_account_id:
                 self.message(":%s!%s@%s JOIN :%s" %
-                             (member.get_irc_nickname(), member.user, member.host, channel.get_irc_name()))
+                             (member.get_irc_nickname(),
+                              member.user,
+                              member.host,
+                              channel.get_irc_name()))
 
     def send_channel_messages(self, channel):
-        """Retrieves and sends the messages of a given channel to the IRC client connection."""
+        """Retrieves and sends the messages of a
+        given channel to the IRC client connection.
+        """
         messages = self.gateway.flow_service.EnumerateMessages(
-            self.gateway.flow_sid, channel.organization_id, channel.channel_id)
+            self.gateway.flow_sid,
+            channel.organization_id,
+            channel.channel_id)
         for message in reversed(messages):
             member = channel.get_member_from_account_id(
                 message["SenderAccountID"])

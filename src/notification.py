@@ -57,7 +57,9 @@ class NotificationProcessor(object):
                 channel_id, "", oid, organization_name)
 
     def process_channel_message(self, message):
-        """Processes the 'ChannelMessages' attribute of 'channel' notifications."""
+        """Processes the 'ChannelMessages' attribute
+        of 'channel' notifications.
+        """
         channel_id = message["ID"]
         channel_name = message["Name"]
         direct_channel = message["Purpose"] == "direct message"
@@ -92,7 +94,9 @@ class NotificationProcessor(object):
             client.send_channel_join_commands(channel)
 
     def process_regular_message(self, message):
-        """Processes the 'RegularMessages' attribute of 'channel' notifications."""
+        """Processes the 'RegularMessages' attribute
+        of 'channel' notifications.
+        """
         sender_account_id = message["SenderAccountID"]
         channel_id = message["ChannelID"]
         message_text = message["Text"]
@@ -100,7 +104,8 @@ class NotificationProcessor(object):
         assert channel_id
         assert message_text
         channel = self.gateway.get_channel(channel_id)
-        # 'channel' notification not received yet (this can happen on some occasions, TODO: investigate)
+        # 'channel' notification not received yet
+        # (this can happen on some occasions, TODO: investigate)
         if not channel:
             return
         sender_member = channel.get_member_from_account_id(sender_account_id)
@@ -145,11 +150,12 @@ class NotificationProcessor(object):
                                                    member["AccountID"],
                                                    channel.organization_name)
                     channel.add_member(channel_member)
-                    self.gateway.notify_clients(":%s!%s@%s JOIN :%s" %
-                                                (channel_member.get_irc_nickname(),
-                                                 channel_member.user,
-                                                 channel_member.host,
-                                                 channel.get_irc_name()))
+                    self.gateway.notify_clients(
+                        ":%s!%s@%s JOIN :%s" %
+                        (channel_member.get_irc_nickname(),
+                         channel_member.user,
+                         channel_member.host,
+                         channel.get_irc_name()))
 
     def process(self):
         """Loop to process notifications in the gateway event_queue."""

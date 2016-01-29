@@ -34,4 +34,5 @@ else
     execute vulture
     execute pyflakes
     execute pep8
+    execute pylint
 fi

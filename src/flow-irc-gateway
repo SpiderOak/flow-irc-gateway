@@ -63,8 +63,14 @@ class FlowIRCGateway(object):
         self.client_connected = threading.Event()
         self.listen_to_events = threading.Event()
 
-        if options.daemon:
-            self.daemonize()
+        self.flow_service = None
+        self.listener_thread = None
+        self.flow_initialized = False
+        self.flow_sid = ""
+        self.flow_username = ""
+        self.flow_account_id = ""
+        self.event_queue = Queue.Queue()
+        self.notification_processor = NotificationProcessor(self)
 
         self.initialize_flow_service(options)
 
@@ -107,8 +113,8 @@ class FlowIRCGateway(object):
                 self.flow_sid, username)
             if member_peer_data:
                 return member_peer_data["AccountID"]
-        except Flow.FlowError as e:
-            self.print_debug("GetPeer: '%s'" % str(e))
+        except Flow.FlowError as flow_err:
+            self.print_debug("GetPeer: '%s'" % str(flow_err))
         return ""
 
     def transmit_message_to_channel(self, channel, message_text):
@@ -125,8 +131,8 @@ class FlowIRCGateway(object):
                 channel.channel_id,
                 message_text)
             return message_id != ""
-        except Flow.FlowError as e:
-            self.print_debug("SendMessage: '%s'" % str(e))
+        except Flow.FlowError as flow_err:
+            self.print_debug("SendMessage: '%s'" % str(flow_err))
             return False
 
     def create_direct_conversation_channel(self,
@@ -149,34 +155,46 @@ class FlowIRCGateway(object):
                 self.flow_sid, oid, account_id)
             if direct_conversation_cid:
                 direct_conversation_channel = DirectChannel(
-                    self, direct_conversation_cid, oid, organization_name, True)
+                    self,
+                    direct_conversation_cid,
+                    oid,
+                    organization_name,
+                    True)
                 current_user = ChannelMember(
-                    self.flow_username, self.flow_account_id, organization_name)
+                    self.flow_username,
+                    self.flow_account_id,
+                    organization_name)
                 other_member = ChannelMember(
                     account_username, account_id, organization_name)
                 direct_conversation_channel.add_member(current_user)
                 direct_conversation_channel.add_member(other_member)
                 self.add_channel(direct_conversation_channel)
-        except Flow.FlowError as e:
-            self.print_debug("NewDirectConversation: '%s'" % str(e))
+        except Flow.FlowError as flow_err:
+            self.print_debug("NewDirectConversation: '%s'" % str(flow_err))
         return direct_conversation_channel
 
     def get_channel(self, channel_id):
-        """Returns a 'Channel' instance given a ChannelID. Returns 'None' if not found."""
+        """Returns a 'Channel' instance given a ChannelID.
+        Returns 'None' if not found.
+        """
         try:
             return self.channels[channel_id]
-        except:
+        except KeyError:
             return None
 
     def get_channel_from_irc_name(self, channel_irc_name):
-        """Returns a 'Channel' instance given the IRC name. Returns 'None' if not found."""
+        """Returns a 'Channel' instance given the IRC name.
+        Returns 'None' if not found.
+        """
         for channel in self.channels.values():
             if channel.get_irc_name() == channel_irc_name:
                 return channel
         return None
 
     def check_channel_collision(self, channel):
-        """Checks and sets if a 'Channel' instance IRC name collides with other channel."""
+        """Checks and sets if a 'Channel'
+        instance IRC name collides with other channel.
+        """
         if self.get_channel_from_irc_name(channel.get_irc_name()):
             channel.name_collides = True
 
@@ -213,8 +231,6 @@ class FlowIRCGateway(object):
 
     def start_listener(self):
         """Starts a thread to listen to notifications from Flow."""
-        self.event_queue = Queue.Queue()
-        self.notification_processor = NotificationProcessor(self)
         self.listen_to_events.set()
         self.listener_thread = threading.Thread(
             target=self.event_listener_loop,
@@ -237,55 +253,36 @@ class FlowIRCGateway(object):
             self.flow_service.StartUp(self.flow_sid)
             self.start_listener()
             self.flow_initialized = True
-        except Flow.FlowError as e:
-            self.print_error("Flow Initialization: '%s'" % str(e))
-
-    def daemonize(self):
-        """Forks a daemon process and exits."""
-        try:
-            pid = os.fork()
-            if pid > 0:
-                sys.exit(0)
-        except OSError:
-            sys.exit(1)
-        os.setsid()
-        try:
-            pid = os.fork()
-            if pid > 0:
-                self.print_info("PID: %d" % pid)
-                sys.exit(0)
-        except OSError:
-            sys.exit(1)
-        os.chdir("/")
-        os.umask(0)
-        dev_null = open("/dev/null", "r+")
-        os.dup2(dev_null.fileno(), sys.stdout.fileno())
-        os.dup2(dev_null.fileno(), sys.stderr.fileno())
-        os.dup2(dev_null.fileno(), sys.stdin.fileno())
+        except Flow.FlowError as flow_err:
+            self.print_error("Flow Initialization: '%s'" % str(flow_err))
 
     def add_channel(self, channel):
         """Adds a 'Channel' instance to the gateway's channel list."""
         self.channels[channel.channel_id] = channel
 
     def print_info(self, msg):
-        """Prints a info msg string to stdout (if self.verbose is set to True)"""
+        """Prints a info msg string to stdout
+        (if self.verbose is set to True).
+        """
         if self.verbose:
             print(msg)
             sys.stdout.flush()
 
     def print_debug(self, msg):
-        """Prints a debug msg string to stdout (if self.debug is set to True)"""
+        """Prints a debug msg string to stdout
+        (if self.debug is set to True).
+        """
         if self.debug:
             print(msg)
             sys.stdout.flush()
 
     def print_error(self, msg):
-        """Prints an error msg string to stdout"""
+        """Prints an error msg string to stdout."""
         sys.stderr.write("%s\n" % msg)
 
     def remove_client(self, client):
         """Removes 'Client' instance 'client' from the clients map."""
-        del self.clients[client.socket]
+        del self.clients[client.client_socket]
 
     def notify_clients(self, irc_msg):
         """Sends 'msg' string to all IRC client connections."""
@@ -318,9 +315,10 @@ class FlowIRCGateway(object):
             try:
                 change = flow.WaitForNotification(sid)
                 if self.client_connected.is_set() and \
-                        change and \
-                        "Type" in change and \
-                        change["Type"] in NotificationProcessor.SUPPORTED_NOTIFICATIONS:
+                   change and \
+                   "Type" in change and \
+                   change["Type"] in \
+                   NotificationProcessor.SUPPORTED_NOTIFICATIONS:
                     event_queue.put(change)
             except Flow.FlowError:
                 pass
@@ -332,16 +330,19 @@ class FlowIRCGateway(object):
             return
         gatewaysockets = []
         for port in self.irc_ports:
-            s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-            s.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+            sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+            sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
             try:
-                s.bind(("localhost", port))  # Listen to local connections only
-            except socket.error as e:
-                self.print_error("Could not bind port %s: %s." % (port, e))
+                # Listen to local connections only
+                sock.bind(("localhost", port))
+            except socket.error as sock_err:
+                self.print_error(
+                    "Could not bind port %s: %s." %
+                    (port, sock_err))
                 sys.exit(1)
-            s.listen(5)
-            gatewaysockets.append(s)
-            del s
+            sock.listen(5)
+            gatewaysockets.append(sock)
+            del sock
             self.print_info("Listening on port %d." % port)
         last_aliveness_check = time.time()
 
@@ -351,29 +352,29 @@ class FlowIRCGateway(object):
             self.notification_processor.process()
 
             # 2) Process IRC client sockets
-            (iwtd, owtd, ewtd) = select.select(
-                gatewaysockets + [x.socket for x in self.clients.values()],
-                [x.socket for x in self.clients.values()
-                 if x.write_queue_size() > 0],
-                [],
-                0.05)
-            for x in iwtd:
-                if x in self.clients:
-                    self.clients[x].socket_readable_notification()
+            (iwtd, owtd, _) = select.select(
+                gatewaysockets +
+                [client.client_socket for client in self.clients.values()],
+                [client.client_socket for client in self.clients.values()
+                 if client.write_queue_size() > 0],
+                [], 0.05)
+            for sock in iwtd:
+                if sock in self.clients:
+                    self.clients[sock].socket_readable_notification()
                 else:
-                    (conn, addr) = x.accept()
+                    (conn, addr) = sock.accept()
                     try:
                         self.clients[conn] = IRCClient(self, conn)
                         self.print_info("Accepted connection from %s:%s." % (
                             addr[0], addr[1]))
-                    except socket.error as e:
+                    except socket.error:
                         try:
                             conn.close()
                         except:
                             pass
-            for x in owtd:
-                if x in self.clients:  # client may have been disconnected
-                    self.clients[x].socket_writable_notification()
+            for sock in owtd:
+                if sock in self.clients:  # client may have been disconnected
+                    self.clients[sock].socket_writable_notification()
 
             now = time.time()
             if last_aliveness_check + 10 < now:
@@ -384,26 +385,26 @@ class FlowIRCGateway(object):
 
 def parse_options_and_config(argv):
     """Command line and config options parsing"""
-    op = OptionParser(
+    opt_parser = OptionParser(
         version=common.VERSION,
         description="flow-irc-gateway is a small IRC gateway to "
                     "SpiderOak Flow (based off of miniircd)")
-    op.add_option(
+    opt_parser.add_option(
         "--config",
         metavar="X",
         help="config ini file X")
-    op.add_option(
+    opt_parser.add_option(
         "--username",
         metavar="X",
         help="flow account username")
 
-    (options, args) = op.parse_args(argv[1:])
+    (options, _) = opt_parser.parse_args(argv[1:])
 
     if not options.config:
-        op.error("Missing config file argument: '--config'")
+        opt_parser.error("Missing config file argument: '--config'")
 
     if not os.path.isfile(options.config):
-        op.error(
+        opt_parser.error(
             "Cannot access '%s', no such file or directory." %
             options.config)
 
@@ -415,26 +416,29 @@ def parse_options_and_config(argv):
         options.username = config.get(common.CONFIG_FILE_SECTION, "username")
 
     if not options.username:
-        op.error("You must provide a user name with '--username' "
-                 "or on a 'username' variable within the config file.")
+        opt_parser.error("You must provide a user name with '--username' or "
+                         "on a 'username' variable within the config file.")
 
     options.server = config.get(common.CONFIG_FILE_SECTION, "server")
     options.port = config.get(common.CONFIG_FILE_SECTION, "port")
     options.db = config.get(common.CONFIG_FILE_SECTION, "db")
     options.schema = config.get(common.CONFIG_FILE_SECTION, "schema")
     options.uri = config.get(common.CONFIG_FILE_SECTION, "uri")
-    options.flowappglue = config.get(common.CONFIG_FILE_SECTION, "flowappglue")
+    options.flowappglue = config.get(common.CONFIG_FILE_SECTION,
+                                     "flowappglue")
 
     if not os.path.isfile(options.flowappglue):
-        op.error(
+        opt_parser.error(
             "Cannot access '%s', no such file or directory." %
             options.flowappglue)
     if not os.path.exists(options.schema):
-        op.error(
+        opt_parser.error(
             "Cannot access '%s', no such file or directory." %
             options.schema)
     if not os.path.exists(options.db):
-        op.error("Cannot access '%s', no such file or directory." % options.db)
+        opt_parser.error(
+            "Cannot access '%s', no such file or directory." %
+            options.db)
 
     try:
         options.debug = config.getboolean(common.CONFIG_FILE_SECTION, "debug")
@@ -451,12 +455,13 @@ def parse_options_and_config(argv):
     except ConfigParser.NoOptionError:
         options.daemon = False
     try:
-        options.irc_ports = config.get(common.CONFIG_FILE_SECTION, "irc-ports")
+        options.irc_ports = config.get(common.CONFIG_FILE_SECTION,
+                                       "irc-ports")
     except ConfigParser.NoOptionError:
         options.irc_ports = "6667"
     try:
-        options.show_timestamps = config.getboolean(common.CONFIG_FILE_SECTION,
-                                                    "show-timestamps")
+        options.show_timestamps = \
+            config.getboolean(common.CONFIG_FILE_SECTION, "show-timestamps")
     except ConfigParser.NoOptionError:
         options.show_timestamps = False
 
@@ -468,19 +473,47 @@ def parse_options_and_config(argv):
         try:
             ports.append(int(port))
         except ValueError:
-            op.error("bad port: %r" % port)
+            opt_parser.error("bad port: %r" % port)
     options.irc_ports = ports
 
     return options
+
+
+def daemonize():
+    """Forks a daemon process and exits."""
+    try:
+        pid = os.fork()
+        if pid > 0:
+            sys.exit(0)
+    except OSError:
+        sys.exit(1)
+    os.setsid()
+    try:
+        pid = os.fork()
+        if pid > 0:
+            print("PID: %d" % pid)
+            sys.exit(0)
+    except OSError:
+        sys.exit(1)
+    os.chdir("/")
+    os.umask(0)
+    dev_null = open("/dev/null", "r+")
+    os.dup2(dev_null.fileno(), sys.stdout.fileno())
+    os.dup2(dev_null.fileno(), sys.stderr.fileno())
+    os.dup2(dev_null.fileno(), sys.stdin.fileno())
 
 
 def main(argv):
     """Entry point for the application"""
 
     options = parse_options_and_config(argv)
+
+    if options.daemon:
+        daemonize()
+
     gateway = FlowIRCGateway(options)
 
-    def signal_handler(signal, frame):
+    def signal_handler(sig, frame):
         print("... terminating ...")
         gateway.terminate()
         sys.exit(0)
