@@ -47,3 +47,8 @@ You must perform the operations in the following order:
 
 - [scripts/gen_data.py](../scripts/gen_data.py): Creates two accounts and a few orgs and channels.
 - [scripts/gen_dc.py](../scripts/gen_dc.py): Starts a Direct Conversation from one account to another.
+
+## TODO
+
+- Implement remaining Flow API methods (e.g. EnumeratePeerVerifications, EnumeratePeerAccounts, etc.)
+- Unit Testing
