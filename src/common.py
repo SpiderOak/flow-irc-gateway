@@ -4,8 +4,10 @@ common.py
 
 VERSION = "0.1"
 CONFIG_FILE_SECTION = "flow-irc-gateway"
+DEFAULT_ENCODING = "UTF-8"
 
 from datetime import datetime
+import locale
 
 
 def get_message_timestamp_string(timestamp_usecs):
@@ -24,3 +26,13 @@ def irc_escape(string):
     """
     # TODO: Make this arbitrary replacement configurable
     return string.replace(",", "_").replace(" ", "-")
+
+
+def get_system_encoding():
+    """Returns a string representing the encoding of the system.
+    If it cannot be determined, then UTF-8 is returned.
+    """
+    _, sys_encoding = locale.getdefaultlocale()
+    if not sys_encoding:
+        sys_encoding = DEFAULT_ENCODING
+    return sys_encoding

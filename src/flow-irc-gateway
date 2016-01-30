@@ -244,7 +244,7 @@ class FlowIRCGateway(object):
         """
         self.flow_initialized = False
         try:
-            self.flow_username = options.username.decode('utf-8')
+            self.flow_username = options.username
             self.flow_service = Flow(options.flowappglue, options.debug)
             self.flow_service.Config(
                 options.server, options.port, options.db, options.schema)
@@ -419,6 +419,8 @@ def parse_options_and_config(argv):
         opt_parser.error("You must provide a user name with '--username' or "
                          "on a 'username' variable within the config file.")
 
+    options.username = options.username.decode(common.get_system_encoding())
+
     options.server = config.get(common.CONFIG_FILE_SECTION, "server")
     options.port = config.get(common.CONFIG_FILE_SECTION, "port")
     options.db = config.get(common.CONFIG_FILE_SECTION, "db")
@@ -514,6 +516,7 @@ def main(argv):
     gateway = FlowIRCGateway(options)
 
     def signal_handler(sig, frame):
+        """Function used to gracefully terminate the gateway."""
         print("... terminating ...")
         gateway.terminate()
         sys.exit(0)
@@ -521,7 +524,11 @@ def main(argv):
     signal.signal(signal.SIGINT, signal_handler)
     signal.signal(signal.SIGTERM, signal_handler)
 
-    gateway.start()
+    try:
+        gateway.start()
+    except:
+        gateway.terminate()
+        raise
 
 
 if __name__ == "__main__":

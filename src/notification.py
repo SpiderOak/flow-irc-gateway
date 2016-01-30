@@ -102,7 +102,6 @@ class NotificationProcessor(object):
         message_text = message["Text"]
         assert sender_account_id
         assert channel_id
-        assert message_text
         channel = self.gateway.get_channel(channel_id)
         # 'channel' notification not received yet
         # (this can happen on some occasions, TODO: investigate)

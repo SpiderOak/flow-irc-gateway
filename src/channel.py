@@ -130,10 +130,12 @@ class DirectChannel(Channel):
         it was started by the other member, then the following is returned:
             #OtherMember(OrganizationName)-Suffix
         """
+        other = self.get_other_dc_member()
+        assert other
         if self.created_on_irc_session:
-            return self.get_other_dc_member().get_irc_nickname()
+            return other.get_irc_nickname()
         else:
-            return "#" + self.get_other_dc_member().nickname + \
+            return "#" + other.nickname + \
                 "(" + common.irc_escape(self.organization_name) + ")" + \
                 self.channel_suffix()
 
