@@ -20,10 +20,11 @@ Usage:
         --debug \
         --server=45.55.26.105 \
         --port=4443 \
-        --db=/home/user/.config/flow-alpha/ \
-        --schema=/home/user/FlowAlpha/resources/app/schema/ \
-        --flowappglue=/home/user/FlowAlpha/resources/app/flowappglue \
+        --db=/home/john/.config/flow-alpha/ \
+        --schema=/home/john/FlowAlpha/resources/app/schema/ \
+        --flowappglue=/home/john/FlowAlpha/resources/app/flowappglue \
         --uri=flow.spideroak.com \
+        --attachment=/home/john/.config/semaphor/downloads/
         > output.txt
 """
 
@@ -82,6 +83,11 @@ def main():
         help="Flow Local Schema Directory",
         required=True)
     parser.add_argument(
+        "--attachment",
+        type=str,
+        help="Flow Local Attachment Directory",
+        required=True)
+    parser.add_argument(
         "--uri",
         default="flow.spideroak.com",
         type=str,
@@ -98,7 +104,7 @@ def main():
         random.choice(
             string.ascii_uppercase +
             string.digits) for _ in range(10))
-    org_name = "Org-" + \
+    org_name = "Team-" + \
         "".join(random.choice(string.ascii_uppercase + string.digits)
                 for _ in range(10))
     channel_name = "Channel-" + \
@@ -112,10 +118,11 @@ def main():
         args.server,
         args.port,
         args.db,
-        args.schema)
+        args.schema,
+        args.attachment)
 
     # Create one account with one organization and one channel
-    sid = flow.NewSession(email, args.uri)
+    sid = flow.NewSession()
 
     flow.CreateAccount(
         sid,
@@ -163,7 +170,7 @@ def main():
 
     # Create a second account that wants to join the above organization and
     # channel
-    sid2 = flow.NewSession(email, args.uri)
+    sid2 = flow.NewSession()
 
     flow.CreateAccount(
         sid2,
@@ -212,7 +219,7 @@ def main():
         print("  %s" % message["Text"])
 
     # Create an extra organization and channel
-    org_name = "Org-" + \
+    org_name = "Team-" + \
         "".join(random.choice(string.ascii_uppercase + string.digits)
                 for _ in range(10))
     channel_name = "Channel-" + \

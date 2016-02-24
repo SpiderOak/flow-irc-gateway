@@ -8,9 +8,10 @@ Usage:
         --debug \
         --server=45.55.26.105 \
         --port=4443 \
-        --db=/home/user/.config/flow-alpha/ \
-        --schema=/home/user/FlowAlpha/resources/app/schema/ \
-        --flowappglue=/home/user/FlowAlpha/resources/app/flowappglue \
+        --db=/home/john/.config/flow-alpha/ \
+        --schema=/home/john/FlowAlpha/resources/app/schema/ \
+        --flowappglue=/home/john/FlowAlpha/resources/app/flowappglue \
+        --attachment=/home/john/.config/semaphor/downloads/
         --uri=flow.spideroak.com \
         --email=A@testing.com
         > output.txt
@@ -71,6 +72,11 @@ def main():
         help="Flow Local Schema Directory",
         required=True)
     parser.add_argument(
+        "--attachment",
+        type=str,
+        help="Flow Local Attachments Directory",
+        required=True)
+    parser.add_argument(
         "--uri",
         default="flow.spideroak.com",
         type=str,
@@ -89,13 +95,14 @@ def main():
         args.server,
         args.port,
         args.db,
-        args.schema)
+        args.schema,
+        args.attachment)
 
     email = args.email
 
     # Log in
-    sid = flow.NewSession(email, args.uri)
-    flow.StartUp(sid)
+    sid = flow.NewSession()
+    flow.StartUp(sid, email, args.uri)
 
     # Start WaitForNotification thread for new account
     account1_thread = threading.Thread(
@@ -125,12 +132,13 @@ def main():
         if email2_found:
             break
 
-    assert email2 != "", "Peer to start conversation could not be found"
-
-    # Start a new direct conversation and send a message
-    cid3 = flow.NewDirectConversation(sid, oid, account_id_2)
-    print("Direct Conversation Channel ID: '%s'" % cid3)
-    flow.SendMessage(sid, oid, cid3, "A Personal Message!")
+    if not email2:
+        print("Peer to start conversation could not be found")
+    else:    
+        # Start a new direct conversation and send a message
+        cid3 = flow.NewDirectConversation(sid, oid, account_id_2)
+        print("Direct Conversation Channel ID: '%s'" % cid3)
+        flow.SendMessage(sid, oid, cid3, "A Personal Message!")
 
     # Close session
     flow.Close(sid)
