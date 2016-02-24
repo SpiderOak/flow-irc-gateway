@@ -30,7 +30,15 @@ $ sudo python setup.py install
 
 ## Run
 
-If installed:
+If installed, you can run it without arguments:
+```
+# To run it without config/args first you need to run flow-electron and log in with an account.
+# flow-irc-gateway will try to load the default configuration depending on the platform.
+$ flow-irc-gateway
+...
+# You can now connect your IRC client to localhost:6667
+```
+or you can override the defaults with a config file and a specific username:
 ```
 $ flow-irc-gateway --config config.cfg --username username@site.com
 ...
@@ -62,7 +70,9 @@ List of config variables:
 - `irc-ports`: IRC listen ports (a list separated by comma or whitespace)
 - `daemon`: Fork and become a daemon.
 
-See a sample configuration file under [config/config.example.cfg](config/config.example.cfg).
+See a sample configuration file under [config/config.example.cfg](config/config.example.cfg). 
+
+For development you can use [config/dev.example.cfg](config/dev.example.cfg).
 
 ## IRC Clients Configuration and Commands
 
