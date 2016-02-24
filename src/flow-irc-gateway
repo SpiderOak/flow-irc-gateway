@@ -18,6 +18,9 @@
 # USA
 #
 # Joel Rosdahl <joel@rosdahl.net>
+"""
+flow-irc-gateway: Flow-IRC-Gateway main script
+"""
 
 import os
 import select
@@ -121,7 +124,7 @@ class FlowIRCGateway(object):
         """Sends a message using Flow.SendMessage.
         Arguments:
         channel : Channel instance
-        message_test : Text to be sent to the channel
+        message_test : Text to be sent to the channel.
         Returns True if the message was sent successfully.
         """
         try:
@@ -238,6 +241,16 @@ class FlowIRCGateway(object):
         )
         self.listener_thread.start()
 
+    def get_local_account(self):
+        """Returns the first local Flow account on this device.
+        It returns the username string.
+        Returns 'None' if there is no account on the device.
+        """
+        local_accounts = self.flow_service.EnumerateLocalAccounts()
+        if not local_accounts:
+            return None
+        return local_accounts[0]["EmailAddress"]
+
     def initialize_flow_service(self, options):
         """Initializes the Flow Service by logging into the user
         account and starting up the Flow session.
@@ -247,10 +260,18 @@ class FlowIRCGateway(object):
             self.flow_username = options.username
             self.flow_service = Flow(options.flowappglue, options.debug)
             self.flow_service.Config(
-                options.server, options.port, options.db, options.schema)
-            self.flow_sid = self.flow_service.NewSession(
-                self.flow_username, options.uri)
-            self.flow_service.StartUp(self.flow_sid)
+                options.server,
+                options.port,
+                options.db,
+                options.schema,
+                options.attachment_dir)
+            if not self.flow_username:
+                self.flow_username = self.get_local_account()
+            if not self.flow_username:
+                raise Flow.FlowError("Local account not found.")
+            self.flow_sid = self.flow_service.NewSession()
+            self.flow_service.StartUp(
+                self.flow_sid, self.flow_username, options.uri)
             self.start_listener()
             self.flow_initialized = True
         except Flow.FlowError as flow_err:
@@ -383,6 +404,86 @@ class FlowIRCGateway(object):
                 last_aliveness_check = now
 
 
+def get_from_config(config, var_name, default_value, isbool=False):
+    """Utility function to get value from config, only if present.
+    Arguments:
+    options: container object with options.
+    config: ConfigParser.ConfigParser instance.
+    var: string, name of variable within the config.
+    isbool: boolean, 'True' if the config variable is supposed to be a boolean.
+    """
+    value = default_value
+    if config.has_option(common.CONFIG_FILE_SECTION, var_name):
+        if isbool:
+            value = config.getboolean(common.CONFIG_FILE_SECTION, var_name)
+        else:
+            value = config.get(common.CONFIG_FILE_SECTION, var_name)
+    return value
+
+
+def read_from_config(opt_parser, options):
+    """Attempts to read options from a config file.
+    It overrides the default values with values present in the config.
+    """
+    if not os.path.isfile(options.config):
+        opt_parser.error(
+            "Cannot access '%s', no such file or directory." %
+            options.config)
+    config = ConfigParser.RawConfigParser()
+    config.read(options.config)
+
+    if not options.username and config.has_option(
+            common.CONFIG_FILE_SECTION, "username"):
+        options.username = config.get(common.CONFIG_FILE_SECTION, "username")
+
+    # override with values from config (if present)
+    options.server = get_from_config(config, "server", options.server)
+    options.port = get_from_config(config, "port", options.port)
+    options.db = get_from_config(config, "db", options.db)
+    options.schema = get_from_config(config, "schema", options.schema)
+    options.attachment_dir = get_from_config(
+        config, "attachment-dir", options.attachment_dir)
+    options.uri = get_from_config(config, "uri", options.uri)
+    options.flowappglue = get_from_config(
+        config, "flowappglue", options.flowappglue)
+    options.debug = get_from_config(config, "debug", options.debug, True)
+    options.verbose = get_from_config(config, "verbose", options.verbose, True)
+    options.daemon = get_from_config(config, "daemon", options.daemon, True)
+    options.irc_ports = get_from_config(config, "irc-ports", options.irc_ports)
+    options.show_timestamps = get_from_config(
+        config, "show-timestamps", options.show_timestamps)
+
+
+def set_sane_defaults(options):
+    """Set sane defaults to avoid the need for a config.
+    Aguments:
+    options: container object to fill with the default values.
+    """
+    options.server = common.DEFAULT_SERVER
+    options.port = common.DEFAULT_PORT
+    options.db = common.get_default_db_path()
+    options.schema = common.get_default_schema_path()
+    options.attachment_dir = common.get_default_attachment_path()
+    options.uri = common.DEFAULT_URI
+    options.flowappglue = common.get_default_flowappglue_path()
+    options.debug = False
+    options.verbose = False
+    options.daemon = False
+    options.irc_ports = common.DEFAULT_IRC_PORT
+    options.show_timestamps = False
+
+
+def check_file_exists(opt_parser, filename):
+    """Checks if file exists. Exits via opt_parser error if it doesn't
+    Arguments:
+    opt_parser: optPa
+    """
+    if not os.path.exists(filename):
+        opt_parser.error(
+            "Cannot access '%s', no such file or directory." %
+            filename)
+
+
 def parse_options_and_config(argv):
     """Command line and config options parsing"""
     opt_parser = OptionParser(
@@ -400,72 +501,19 @@ def parse_options_and_config(argv):
 
     (options, _) = opt_parser.parse_args(argv[1:])
 
-    if not options.config:
-        opt_parser.error("Missing config file argument: '--config'")
+    set_sane_defaults(options)
 
-    if not os.path.isfile(options.config):
-        opt_parser.error(
-            "Cannot access '%s', no such file or directory." %
-            options.config)
+    if options.config:
+        read_from_config(opt_parser, options)
 
-    config = ConfigParser.RawConfigParser()
-    config.read(options.config)
+    if options.username:
+        options.username = options.username.decode(
+            common.get_system_encoding())
 
-    if not options.username and config.has_option(
-            common.CONFIG_FILE_SECTION, "username"):
-        options.username = config.get(common.CONFIG_FILE_SECTION, "username")
-
-    if not options.username:
-        opt_parser.error("You must provide a user name with '--username' or "
-                         "on a 'username' variable within the config file.")
-
-    options.username = options.username.decode(common.get_system_encoding())
-
-    options.server = config.get(common.CONFIG_FILE_SECTION, "server")
-    options.port = config.get(common.CONFIG_FILE_SECTION, "port")
-    options.db = config.get(common.CONFIG_FILE_SECTION, "db")
-    options.schema = config.get(common.CONFIG_FILE_SECTION, "schema")
-    options.uri = config.get(common.CONFIG_FILE_SECTION, "uri")
-    options.flowappglue = config.get(common.CONFIG_FILE_SECTION,
-                                     "flowappglue")
-
-    if not os.path.isfile(options.flowappglue):
-        opt_parser.error(
-            "Cannot access '%s', no such file or directory." %
-            options.flowappglue)
-    if not os.path.exists(options.schema):
-        opt_parser.error(
-            "Cannot access '%s', no such file or directory." %
-            options.schema)
-    if not os.path.exists(options.db):
-        opt_parser.error(
-            "Cannot access '%s', no such file or directory." %
-            options.db)
-
-    try:
-        options.debug = config.getboolean(common.CONFIG_FILE_SECTION, "debug")
-    except ConfigParser.NoOptionError:
-        options.debug = False
-    try:
-        options.verbose = config.getboolean(
-            common.CONFIG_FILE_SECTION, "verbose")
-    except ConfigParser.NoOptionError:
-        options.verbose = False
-    try:
-        options.daemon = config.getboolean(
-            common.CONFIG_FILE_SECTION, "daemon")
-    except ConfigParser.NoOptionError:
-        options.daemon = False
-    try:
-        options.irc_ports = config.get(common.CONFIG_FILE_SECTION,
-                                       "irc-ports")
-    except ConfigParser.NoOptionError:
-        options.irc_ports = "6667"
-    try:
-        options.show_timestamps = \
-            config.getboolean(common.CONFIG_FILE_SECTION, "show-timestamps")
-    except ConfigParser.NoOptionError:
-        options.show_timestamps = False
+    check_file_exists(opt_parser, options.db)
+    check_file_exists(opt_parser, options.schema)
+    check_file_exists(opt_parser, options.attachment_dir)
+    check_file_exists(opt_parser, options.flowappglue)
 
     if options.debug:
         options.verbose = True

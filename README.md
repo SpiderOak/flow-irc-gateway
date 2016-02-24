@@ -8,9 +8,9 @@ By running this gateway you can use your IRC client of preference and connect to
 ## Features
 
 - On startup, the gateway starts the `flowappglue` REST server to interact with the Flow service.
-- Upon an IRC client connection, Organizations + Channels + Messages are loaded from Flow and shown to the IRC client.
+- Upon an IRC client connection, Teams + Channels + Messages are loaded from Flow and shown to the IRC client.
 The user can then use the IRC client just like on any IRC network.
-- Organizations and channels are listed in the MOTD (Message Of The Day).
+- Teams and channels are listed in the MOTD (Message Of The Day).
 - The IRC nickname is defined by the gateway upon registration and cannot be changed.
 - Channels and Direct Conversation the user becomes a member of, show up automatically on the IRC client.
 - Direct Conversations can be started from the IRC client (see "IRC Clients Configuration and Commands" section below).
@@ -66,10 +66,10 @@ See a sample configuration file under [config/config.example.cfg](config/config.
 
 ## IRC Clients Configuration and Commands
 
-- Channels are displayed as `#ChannelName(OrganizationName)`, if there are channel name collisions, then a '-' and the first 5 characters of the ChannelID are appended.
-- Members are displayed as `MemberName(OrganizationName)`
-- Direct Conversation started from the IRC client (in-session) are displayed as `MemberName(OrganizationName)`, see below on how you can start one from each IRC client.
-- Loaded Direct Conversations are displayed as `MemberName(OrganizationName)-$ID`, where ID are the first 5 characters of the ChannelID. This is so you can have more than one Direct Conversation with the same member.
+- Channels are displayed as `#ChannelName(TeamName)`, if there are channel name collisions, then a '-' and the first 5 characters of the ChannelID are appended.
+- Members are displayed as `MemberName(TeamName)`
+- Direct Conversation started from the IRC client (in-session) are displayed as `MemberName(TeamName)`, see below on how you can start one from each IRC client.
+- Loaded Direct Conversations are displayed as `MemberName(TeamName)-$ID`, where ID are the first 5 characters of the ChannelID. This is so you can have more than one Direct Conversation with the same member.
 
 ### irssi:
 ```
@@ -116,15 +116,15 @@ Chatting -> Logging -> Display scrollback from previous session
 
 - The user is not able to:
   - Perform administrative tasks on the Flow service, like:
-    - Create new organizations/channels.
-    - Join existing organizations/channels.
-    - Request to join organizations.
+    - Create new teams/channels.
+    - Join existing teams/channels.
+    - Request to join teams.
   - Start two Direct Conversations with the same member within the same session.
 - The gateway can only be used with one IRC client at a time.
 - With xchat/hexchat, if you are a member of several Channels (40+), then you may notice that it takes many seconds 
 for the gateway to start-up. Both IRC clients do not execute user actions until all "MODE" commands for all the channels are received (this does not happen with irssi or weechat).
 More research on this is underway.
-- IRC channels are identified by name, Flow channels within an Organization can have the same name. 
+- IRC channels are identified by name, Flow channels within a team can have the same name. 
 The gateway currently adds the five first chars of the ChannelID as a suffix to the name to overcome this limitation.
 
 ## TODO
@@ -134,7 +134,7 @@ The gateway currently adds the five first chars of the ChannelID as a suffix to 
  - nickname space character and "," replacement (see [src/common.py](src/common.py)).
  - timestamp format (see [src/common.py](src/common.py)).
 - Add unit test to the Flow module, and to flow-irc-gateway itself.
-- Process "org-member-event" notifications to notify of other member joining organizations the user is part of.
+- Process "org-member-event" notifications to notify of other member joining teams the user is part of.
 - Print debug output to a log file.
 - Many sections of the code assume the existence of simultaneuos IRC client connections (see variable self.clients in [src/flow-irc-gateway](src/flow-irc-gateway)). This needs to be cleaned up, the gateway only support one IRC client connection at a time.
 - Gracefully handle Flow.FlowError exceptions.

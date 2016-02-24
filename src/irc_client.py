@@ -80,7 +80,7 @@ class IRCClient(object):
     def start_direct_conversation(self, targetname):
         """Creates a NewDirectConversation channel.
         Arguments:
-        targetname : string, format: MemberName(OrganizationName).
+        targetname : string, format: MemberName(TeamName).
         Returns a 'Channel' instance that represents the direct conversation.
         Returns 'None' if the direct conversation could not be created.
         """
@@ -422,7 +422,7 @@ class IRCClient(object):
             "372 %s :- Your Flow username is: %s" %
             (self.nickname, self.nickname))
         self.reply(
-            "372 %s :- List of Organizations and Channels:" %
+            "372 %s :- List of Teams and Channels:" %
             self.nickname)
         orgs_channels = self.get_list_of_channels_by_org()
         for org_name, channel_list in orgs_channels.iteritems():

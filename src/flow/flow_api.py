@@ -84,6 +84,7 @@ class Flow(object):
             flow_serv_port,
             flow_local_database_dir,
             flow_local_schema_dir,
+            flow_local_attachment_dir,
             use_tls="true"):
         """Sets up the basic configuration parameters
         for FlowApp to talk FlowServ and
@@ -94,26 +95,26 @@ class Flow(object):
                   FlowServPort=flow_serv_port,
                   FlowLocalDatabaseDir=flow_local_database_dir,
                   FlowLocalSchemaDir=flow_local_schema_dir,
+                  FlowLocalAttachmentDir=flow_local_attachment_dir,
                   FlowUseTLS=use_tls,
                   )
 
-    def NewSession(self, username, server_uri):
+    def NewSession(self):
         """Creates a new session for the given user, even if it doesn't exist.
         Returns an integer representing a SessionID.
         """
-        response = self._Run(method="NewSession",
-                             EmailAddress=username,
-                             ServerURI=server_uri,
-                             )
+        response = self._Run(method="NewSession")
         return response["SessionID"]
 
-    def StartUp(self, sid):
+    def StartUp(self, sid, username, server_uri):
         """Starts the flowapp instance (notification internal loop, etc)
         for an account that is already created and has a device already
         configured in the current device. Returns 'null'.
         """
         self._Run(method="StartUp",
                   SessionID=sid,
+                  EmailAddress=username,
+                  ServerURI=server_uri,
                   )
 
     def CreateAccount(
@@ -290,6 +291,13 @@ class Flow(object):
         return self._Run(method="GetPeer",
                          SessionID=sid,
                          PeerEmailAddress=username,
+                         )
+
+    def EnumerateLocalAccounts(self):
+        """Lists all the accounts configured locally (not the peers).
+        Returns an array of 'AccountIdentifier' dicts.
+        """
+        return self._Run(method="EnumerateLocalAccounts",
                          )
 
     def Close(self, sid):

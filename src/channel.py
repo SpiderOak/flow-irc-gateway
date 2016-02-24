@@ -61,7 +61,7 @@ class Channel(object):
 
     def get_irc_name(self):
         """Returns the IRC name of the Channel.
-        Format: #ChannelName(OrganizationName).
+        Format: #ChannelName(TeamName).
         If there are two channels with the same name within an Organization,
         then channel_suffix() is used.
         """
@@ -125,10 +125,10 @@ class DirectChannel(Channel):
         """Returns the IRC name of the Channel.
         If the channel was created on the current IRC session,
         then it returns the following:
-            #OtherMember(OrganizationName)
+            #OtherMember(TeamName)
         If the conversation was not created on the current IRC session or
         it was started by the other member, then the following is returned:
-            #OtherMember(OrganizationName)-Suffix
+            #OtherMember(TeamName)-Suffix
         """
         other = self.get_other_dc_member()
         assert other
