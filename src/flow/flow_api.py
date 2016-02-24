@@ -185,7 +185,7 @@ class Flow(object):
                          ChannelID=cid,
                          )
 
-    def SendMessage(self, sid, oid, cid, msg, other_data={}):
+    def SendMessage(self, sid, oid, cid, msg, other_data=None):
         """Sends a message to a channel this user is a member of.
         Returns a string that represents the 'MessageID'
         that has just been sent.
