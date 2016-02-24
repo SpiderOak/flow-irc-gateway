@@ -24,18 +24,16 @@ _CONFIG_OS_PATH_MAP = {
     "linux2": ".config/semaphor",
     "win32": r"AppData\Local\semaphor",
 }
-
-
 _DEFAULT_APP_OSX_PATH = "/Applications/Semaphor.app/Contents/Resources/app"
 _DEFAULT_APP_LINUX_RPM_PATH = "/opt/Semaphor-linux-x64/resources/app"
 _DEFAULT_APP_LINUX_DEB_PATH = "/usr/share/semaphor/resources/app"
 _DEFAULT_APP_WINDOWS_PATH = r"Semaphor\resources\app"
 
+# Default dirs and binaries
 _DEFAULT_ATTACHMENT_DIR = "downloads"
 _DEFAULT_SCHEMA_DIR = "schema"
-
 _DEFAULT_FLOWAPPGLUE_BINARY_DEV_NAME = "flowappglue"
-_DEFAULT_FLOWAPPGLUE_BINARY_PROD_NAME = "backend-semaphor"
+_DEFAULT_FLOWAPPGLUE_BINARY_PROD_NAME = "semaphor-backend"
 
 
 def _osx_app_path():
@@ -44,7 +42,7 @@ def _osx_app_path():
 
 
 def _linux_app_path():
-    """Returns the default application for linux
+    """Returns the default application directory for Linux
     depending on the packaging (deb or rpm).
     """
     # check if RPM first
@@ -55,8 +53,9 @@ def _linux_app_path():
 
 
 def _windows_app_path():
-    """Returns the default application directory """
-    return os.path.join(os.environ["ProgramFiles"], _DEFAULT_APP_WINDOWS_PATH)
+    """Returns the default application directory for Windows."""
+    return os.path.join(os.environ["ProgramFiles"], 
+                        _DEFAULT_APP_WINDOWS_PATH)
 
 
 def _get_home_directory():
