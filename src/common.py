@@ -54,7 +54,7 @@ def _linux_app_path():
 
 def _windows_app_path():
     """Returns the default application directory for Windows."""
-    return os.path.join(os.environ["ProgramFiles"], 
+    return os.path.join(os.environ["ProgramFiles"],
                         _DEFAULT_APP_WINDOWS_PATH)
 
 
