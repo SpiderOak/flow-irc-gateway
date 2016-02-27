@@ -207,14 +207,8 @@ class IRCClient(object):
             self.send_lusers()
 
         def mode_handler():
-            """Handler for the MODE IRC command.
-            Flow channels have no MODEs therefore this
-            returns MODE responses with no modes in them.
-            """
-            if len(arguments) < 1:
-                return
-            targetname = arguments[0]
-            self.reply("324 %s %s" % (self.nickname, targetname))
+            """MODE command is not supported by this gateway."""
+            pass
 
         def motd_handler():
             """Handler for the MOTD IRC command."""
