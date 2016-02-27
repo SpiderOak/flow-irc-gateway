@@ -28,8 +28,6 @@ import socket
 import sys
 import time
 from optparse import OptionParser
-import threading
-import Queue
 import signal
 import ConfigParser
 import re
@@ -37,8 +35,8 @@ import re
 import common
 from channel import ChannelMember, Channel, DirectChannel
 from irc_client import IRCClient
-from notification import NotificationProcessor
-from flow.flow_api import Flow
+from notification import NotificationHandler
+from flow import Flow
 
 
 class FlowIRCGateway(object):
@@ -63,24 +61,16 @@ class FlowIRCGateway(object):
         self.organizations = {}  # OrgID --> Organization Name
         self.pending_channels = {}  # ChannelID --> PendingChannel instance
 
-        self.client_connected = threading.Event()
-        self.listen_to_events = threading.Event()
-
+        self.client_connected = True
         self.flow_service = None
-        self.listener_thread = None
         self.flow_initialized = False
-        self.flow_sid = ""
         self.flow_username = ""
         self.flow_account_id = ""
-        self.event_queue = Queue.Queue()
-        self.notification_processor = NotificationProcessor(self)
-
-        self.initialize_flow_service(options)
+        self.notification_handler = NotificationHandler(self)
 
     def terminate(self):
-        """Terminates the Flow service and listener thread."""
-        self.listen_to_events.clear()
-        self.flow_service.Terminate()
+        """Terminates the Flow service."""
+        self.flow_service.terminate()
 
     def get_member(self, irc_nickname):
         """Gets a channel member from its IRC nickname.
@@ -112,30 +102,28 @@ class FlowIRCGateway(object):
         Returns an empty string if not found.
         """
         try:
-            member_peer_data = self.flow_service.GetPeer(
-                self.flow_sid, username)
+            member_peer_data = self.flow_service.get_peer(username)
             if member_peer_data:
                 return member_peer_data["AccountID"]
         except Flow.FlowError as flow_err:
-            self.print_debug("GetPeer: '%s'" % str(flow_err))
+            self.print_debug("get_peer: '%s'" % str(flow_err))
         return ""
 
     def transmit_message_to_channel(self, channel, message_text):
-        """Sends a message using Flow.SendMessage.
+        """Sends a message using Flow.send_message.
         Arguments:
         channel : Channel instance
         message_test : Text to be sent to the channel.
         Returns True if the message was sent successfully.
         """
         try:
-            message_id = self.flow_service.SendMessage(
-                self.flow_sid,
+            message_id = self.flow_service.send_message(
                 channel.organization_id,
                 channel.channel_id,
                 message_text)
             return message_id != ""
         except Flow.FlowError as flow_err:
-            self.print_debug("SendMessage: '%s'" % str(flow_err))
+            self.print_debug("send_message: '%s'" % str(flow_err))
             return False
 
     def create_direct_conversation_channel(self,
@@ -154,8 +142,10 @@ class FlowIRCGateway(object):
         """
         direct_conversation_channel = None
         try:
-            direct_conversation_cid = self.flow_service.NewDirectConversation(
-                self.flow_sid, oid, account_id)
+            direct_conversation_cid = \
+                self.flow_service.new_direct_conversation(
+                    oid,
+                    account_id)
             if direct_conversation_cid:
                 direct_conversation_channel = DirectChannel(
                     self,
@@ -207,7 +197,7 @@ class FlowIRCGateway(object):
         oid : string, OrgID of the Organization
         org_name : string, Name of the Organization
         """
-        channels = self.flow_service.EnumerateChannels(self.flow_sid, oid)
+        channels = self.flow_service.enumerate_channels(oid)
         for channel in channels:
             channel_name = channel["Name"]
             direct_channel = channel["Purpose"] == "direct message"
@@ -225,31 +215,44 @@ class FlowIRCGateway(object):
         """Loads all Organizations and Channels the account is member of."""
         self.organizations = {}
         self.channels = {}
-        orgs = self.flow_service.EnumerateOrgs(self.flow_sid)
+        orgs = self.flow_service.enumerate_orgs()
         for org in orgs:
             oid = org["ID"]
             org_name = org["Name"]
             self.organizations[oid] = org_name
             self.get_channels(oid, org_name)
 
-    def start_listener(self):
-        """Starts a thread to listen to notifications from Flow."""
-        self.listen_to_events.set()
-        self.listener_thread = threading.Thread(
-            target=self.event_listener_loop,
-            args=(self.flow_service, self.flow_sid, self.event_queue)
-        )
-        self.listener_thread.start()
-
     def get_local_account(self):
         """Returns the first local Flow account on this device.
         It returns the username string.
         Returns 'None' if there is no account on the device.
         """
-        local_accounts = self.flow_service.EnumerateLocalAccounts()
+        local_accounts = self.flow_service.enumerate_local_accounts()
         if not local_accounts:
             return None
         return local_accounts[0]["EmailAddress"]
+
+    def register_callbacks(self):
+        """Registers all the notification types this gateway supports."""
+        self.flow_service.register_callback(
+            Flow.ORG_NOTIFICATION,
+            self.notification_handler.org_notification)
+        self.flow_service.register_callback(
+            Flow.CHANNEL_NOTIFICATION,
+            self.notification_handler.channel_notification)
+        self.flow_service.register_callback(
+            Flow.MESSAGE_NOTIFICATION,
+            self.notification_handler.message_notification)
+        self.flow_service.register_callback(
+            Flow.CHANNEL_MEMBER_NOTIFICATION,
+            self.notification_handler.channel_member_notification)
+
+    def unregister_callbacks(self):
+        """Unregisters all the notification types this gateway supports."""
+        self.flow_service.unregister_callback(Flow.ORG_NOTIFICATION)
+        self.flow_service.unregister_callback(Flow.CHANNEL_NOTIFICATION)
+        self.flow_service.unregister_callback(Flow.MESSAGE_NOTIFICATION)
+        self.flow_service.unregister_callback(Flow.CHANNEL_MEMBER_NOTIFICATION)
 
     def initialize_flow_service(self, options):
         """Initializes the Flow Service by logging into the user
@@ -258,8 +261,9 @@ class FlowIRCGateway(object):
         self.flow_initialized = False
         try:
             self.flow_username = options.username
-            self.flow_service = Flow(options.flowappglue, options.debug)
-            self.flow_service.Config(
+            self.flow_service = Flow(
+                options.flowappglue,
+                options.debug,
                 options.server,
                 options.port,
                 options.db,
@@ -269,10 +273,7 @@ class FlowIRCGateway(object):
                 self.flow_username = self.get_local_account()
             if not self.flow_username:
                 raise Flow.FlowError("Local account not found.")
-            self.flow_sid = self.flow_service.NewSession()
-            self.flow_service.StartUp(
-                self.flow_sid, self.flow_username, options.uri)
-            self.start_listener()
+            self.flow_service.start_up(self.flow_username, options.uri)
             self.flow_initialized = True
         except Flow.FlowError as flow_err:
             self.print_error("Flow Initialization: '%s'" % str(flow_err))
@@ -302,8 +303,12 @@ class FlowIRCGateway(object):
         sys.stderr.write("%s\n" % msg)
 
     def remove_client(self, client):
-        """Removes 'Client' instance 'client' from the clients map."""
+        """Removes 'Client' instance 'client' from the clients map.
+        The gateway stops processing notifications until reconnection.
+        """
         del self.clients[client.client_socket]
+        self.unregister_callbacks()
+        self.client_connected = False
 
     def notify_clients(self, irc_msg):
         """Sends 'msg' string to all IRC client connections."""
@@ -311,11 +316,11 @@ class FlowIRCGateway(object):
             client.message(irc_msg)
 
     def get_channel_members(self, channel):
-        """Retrieves (via Flow.EnumerateChannelMembers) and sets
+        """Retrieves (via Flow.enumerate_channel_members) and sets
         all channel members on a given 'Channel' instance.
         """
-        members = self.flow_service.EnumerateChannelMembers(
-            self.flow_sid, channel.channel_id)
+        members = self.flow_service.enumerate_channel_members(
+            channel.channel_id)
         for member in members:
             account_id = member["AccountID"]
             account_username = member["EmailAddress"]
@@ -324,25 +329,6 @@ class FlowIRCGateway(object):
             channel_member = ChannelMember(
                 account_username, account_id, channel.organization_name)
             channel.add_member(channel_member)
-
-    def event_listener_loop(self, flow, sid, event_queue):
-        """Main loop to listen for new Flow notifications.
-        Arguments:
-        flow : Flow instance.
-        sid : string, id of the Flow session.
-        event_queue : Queue, queue to consume notifications.
-        """
-        while self.listen_to_events.is_set():
-            try:
-                change = flow.WaitForNotification(sid)
-                if self.client_connected.is_set() and \
-                   change and \
-                   "Type" in change and \
-                   change["Type"] in \
-                   NotificationProcessor.SUPPORTED_NOTIFICATIONS:
-                    event_queue.put(change)
-            except Flow.FlowError:
-                pass
 
     def start(self):
         """FlowIRCGateway initialization and main loop"""
@@ -368,11 +354,11 @@ class FlowIRCGateway(object):
         last_aliveness_check = time.time()
 
         while True:
-
-            # 1) Process Notifications
-            self.notification_processor.process()
-
-            # 2) Process IRC client sockets
+            # Process Flow notifications
+            if self.client_connected:
+                while self.flow_service.process_one_notification(0.05):
+                    pass
+            # Process IRC client socket connections
             (iwtd, owtd, _) = select.select(
                 gatewaysockets +
                 [client.client_socket for client in self.clients.values()],
@@ -396,7 +382,6 @@ class FlowIRCGateway(object):
             for sock in owtd:
                 if sock in self.clients:  # client may have been disconnected
                     self.clients[sock].socket_writable_notification()
-
             now = time.time()
             if last_aliveness_check + 10 < now:
                 for client in self.clients.values():
@@ -407,10 +392,11 @@ class FlowIRCGateway(object):
 def get_from_config(config, var_name, default_value, isbool=False):
     """Utility function to get value from config, only if present.
     Arguments:
-    options: container object with options.
-    config: ConfigParser.ConfigParser instance.
-    var: string, name of variable within the config.
-    isbool: boolean, 'True' if the config variable is supposed to be a boolean.
+    options : container object with options.
+    config : ConfigParser.ConfigParser instance.
+    var : string, name of variable within the config.
+    isbool : boolean, 'True' if the config variable
+    is supposed to be a boolean.
     """
     value = default_value
     if config.has_option(common.CONFIG_FILE_SECTION, var_name):
@@ -424,6 +410,9 @@ def get_from_config(config, var_name, default_value, isbool=False):
 def read_from_config(opt_parser, options):
     """Attempts to read options from a config file.
     It overrides the default values with values present in the config.
+    Arguments:
+    opt_parser : optparser.OptionParser instance.
+    options : container object with options.
     """
     if not os.path.isfile(options.config):
         opt_parser.error(
@@ -457,31 +446,19 @@ def read_from_config(opt_parser, options):
 def set_sane_defaults(options):
     """Set sane defaults to avoid the need for a config.
     Aguments:
-    options: container object to fill with the default values.
+    options : container object to fill with the default values.
     """
-    options.server = common.DEFAULT_SERVER
-    options.port = common.DEFAULT_PORT
-    options.db = common.get_default_db_path()
-    options.schema = common.get_default_schema_path()
-    options.attachment_dir = common.get_default_attachment_path()
-    options.uri = common.DEFAULT_URI
-    options.flowappglue = common.get_default_flowappglue_path()
-    options.debug = False
+    options.server = ""
+    options.port = ""
+    options.db = ""
+    options.schema = ""
+    options.attachment_dir = ""
+    options.uri = ""
+    options.flowappglue = ""
     options.verbose = False
     options.daemon = False
     options.irc_ports = common.DEFAULT_IRC_PORT
     options.show_timestamps = False
-
-
-def check_file_exists(opt_parser, filename):
-    """Checks if file exists. Exits via opt_parser error if it doesn't
-    Arguments:
-    opt_parser: optPa
-    """
-    if not os.path.exists(filename):
-        opt_parser.error(
-            "Cannot access '%s', no such file or directory." %
-            filename)
 
 
 def parse_options_and_config(argv):
@@ -495,6 +472,11 @@ def parse_options_and_config(argv):
         metavar="X",
         help="config ini file X")
     opt_parser.add_option(
+        "--debug",
+        action="store_true",
+        help="Debug Mode",
+        default=False)
+    opt_parser.add_option(
         "--username",
         metavar="X",
         help="flow account username")
@@ -507,13 +489,14 @@ def parse_options_and_config(argv):
         read_from_config(opt_parser, options)
 
     if options.username:
-        options.username = options.username.decode(
-            common.get_system_encoding())
-
-    check_file_exists(opt_parser, options.db)
-    check_file_exists(opt_parser, options.schema)
-    check_file_exists(opt_parser, options.attachment_dir)
-    check_file_exists(opt_parser, options.flowappglue)
+        try:
+            system_encoding = common.get_system_encoding()
+        except:  # OSX bug in locale.getdefaultlocale()
+            system_encoding = common.DEFAULT_ENCODING
+            print(
+                "locale.getdefaultlocale() failed, using '%s'." %
+                system_encoding)
+        options.username = options.username.decode(system_encoding)
 
     if options.debug:
         options.verbose = True
@@ -573,6 +556,7 @@ def main(argv):
     signal.signal(signal.SIGTERM, signal_handler)
 
     try:
+        gateway.initialize_flow_service(options)
         gateway.start()
     except:
         gateway.terminate()

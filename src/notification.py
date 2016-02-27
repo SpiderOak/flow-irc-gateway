@@ -3,20 +3,13 @@ notification.py
 """
 
 import common
-import Queue
 from channel import ChannelMember, PendingChannel, Channel, DirectChannel
 
 
-class NotificationProcessor(object):
-    """A Flow notifications/event processor.
-    Consumes from the gateway event_queue.
+class NotificationHandler(object):
+    """A Flow notifications handler.
+    It implements callback methods to deal with Flow notifications.
     """
-
-    SUPPORTED_NOTIFICATIONS = [
-        "org",
-        "channel",
-        "message",
-        "channel-member-event"]
 
     def __init__(self, gateway):
         """Arguments:
@@ -65,7 +58,7 @@ class NotificationProcessor(object):
         direct_channel = message["Purpose"] == "direct message"
         assert channel_id
         assert channel_name or direct_channel
-        # ChannelMessage notifications may arrive from NewDirectConversation
+        # ChannelMessage notifications may arrive from new_direct_conversation
         # started by the client
         if channel_id not in self.gateway.pending_channels:
             return
@@ -140,8 +133,8 @@ class NotificationProcessor(object):
             # notifications
             if not channel:
                 continue
-            members = self.gateway.flow_service.EnumerateChannelMembers(
-                self.gateway.flow_sid, channel_id)
+            members = self.gateway.flow_service.enumerate_channel_members(
+                channel_id)
             for member in members:
                 if not channel.get_member_from_nickname(
                         member["EmailAddress"]):
@@ -155,24 +148,3 @@ class NotificationProcessor(object):
                          channel_member.user,
                          channel_member.host,
                          channel.get_irc_name()))
-
-    def process(self):
-        """Loop to process notifications in the gateway event_queue."""
-        event_handler = {
-            "org": self.org_notification,
-            "channel": self.channel_notification,
-            "message": self.message_notification,
-            "channel-member-event": self.channel_member_notification,
-        }
-        has_events = True
-        while has_events:
-            try:
-                event = self.gateway.event_queue.get(block=True, timeout=0.05)
-                try:
-                    event_handler[event["Type"]](event["Data"])
-                except KeyError:
-                    self.gateway.print_debug(
-                        "Notification of type '%s' not supported." %
-                        event["Type"])
-            except Queue.Empty:
-                has_events = False

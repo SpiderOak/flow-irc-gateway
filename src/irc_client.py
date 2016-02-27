@@ -78,7 +78,7 @@ class IRCClient(object):
             self.__handle_command(command, arguments)
 
     def start_direct_conversation(self, targetname):
-        """Creates a NewDirectConversation channel.
+        """Creates a direct conversation channel.
         Arguments:
         targetname : string, format: MemberName(TeamName).
         Returns a 'Channel' instance that represents the direct conversation.
@@ -146,7 +146,9 @@ class IRCClient(object):
             for channel in self.gateway.channels.values():
                 self.send_channel_data(channel)
             self.__handle_command = self.__command_handler
-            self.gateway.client_connected.set()
+            # We signal the gateway to start processing notifications
+            self.gateway.client_connected = True
+            self.gateway.register_callbacks()
 
     def __command_handler(self, command, arguments):
         """IRC commands handler."""
@@ -378,7 +380,6 @@ class IRCClient(object):
                 self.host, self.port, quitmsg))
         self.client_socket.close()
         self.gateway.remove_client(self)
-        self.gateway.client_connected.clear()
 
     def message(self, msg):
         """Writes to the self.__writebuffer buffer,
@@ -469,8 +470,7 @@ class IRCClient(object):
         """Retrieves and sends the messages of a
         given channel to the IRC client connection.
         """
-        messages = self.gateway.flow_service.EnumerateMessages(
-            self.gateway.flow_sid,
+        messages = self.gateway.flow_service.enumerate_messages(
             channel.organization_id,
             channel.channel_id)
         for message in reversed(messages):
