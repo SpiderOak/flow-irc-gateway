@@ -5,14 +5,7 @@
 # usage to format files:
 # ,/check --format
 
-SOURCES_DIR="../src"
-SOURCES="\
-$SOURCES_DIR/common.py \
-$SOURCES_DIR/channel.py \
-$SOURCES_DIR/notification.py \
-$SOURCES_DIR/irc_client.py \
-$SOURCES_DIR/flow-irc-gateway \
-"
+SOURCES="*.py"
 
 command_exists () {
     type "$1" &>/dev/null ;
