@@ -1,10 +1,13 @@
-from setuptools import setup, find_packages
+from setuptools import setup
 
 setup(name = "flow-irc-gateway",
       version = "0.1",
-      package_dir = { "": "src" },
-      py_modules = [ "common", "irc_client", "channel", "notification" ],
-      scripts = [ "src/flow-irc-gateway" ], 
+      packages = [ 'src' ],
+      entry_points = {
+        "console_scripts": [
+        "flow-irc-gateway=src.flow_irc_gateway:main",
+        ],
+      },
       # TODO: change as soon as flow-python is available at pypi
       # install_requires = [ "flow-python" ],  
       keywords = [ "spideroak", "irc", "flow", "gateway", "semaphor" ],

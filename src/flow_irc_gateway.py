@@ -536,10 +536,10 @@ def daemonize():
     os.dup2(dev_null.fileno(), sys.stdin.fileno())
 
 
-def main(argv):
+def main():
     """Entry point for the application"""
 
-    options = parse_options_and_config(argv)
+    options = parse_options_and_config(sys.argv)
 
     if options.daemon:
         daemonize()
@@ -564,4 +564,4 @@ def main(argv):
 
 
 if __name__ == "__main__":
-    main(sys.argv)
+    main()
