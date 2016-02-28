@@ -262,6 +262,8 @@ class FlowIRCGateway(object):
         try:
             self.flow_username = options.username
             self.flow_service = Flow(
+                "",
+                "",
                 options.flowappglue,
                 options.debug,
                 options.server,
