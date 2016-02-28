@@ -8,21 +8,24 @@ By running this gateway you can use your IRC client of preference and connect to
 ## Features
 
 - On startup, the gateway starts the `flowappglue` REST server to interact with the Flow service.
-- Upon an IRC client connection, Teams + Channels + Messages are loaded from Flow and shown to the IRC client.
-The user can then use the IRC client just like on any IRC network.
+- Upon an IRC client connection/re-connection, Teams + Channels + Messages are loaded from Flow and shown to the IRC client. The user can then use the IRC client just like on any IRC network.
 - Teams and channels are listed in the MOTD (Message Of The Day).
 - The IRC nickname is defined by the gateway upon registration and cannot be changed.
 - Channels and Direct Conversation the user becomes a member of, show up automatically on the IRC client.
 - Direct Conversations can be started from the IRC client (see "IRC Clients Configuration and Commands" section below).
-- Supported IRC commands: 'LIST', 'PRIVMSG', 'WHOIS', 'WHO', 'MOTD', 'MODE' & 'LUSERS'.
+- Supported IRC commands: 'LIST', 'PRIVMSG', 'WHOIS', 'WHO', 'MOTD' & 'LUSERS'.
 - Tested with weechat, irssi and xchat/hexchat.
 - The gateway uses UTF-8 encoding.
-- Makes use of the Flow API Python Module ([src/flow/](src/flow/))
+- Makes use of the [flow-python](https://github.com/SpiderOak/flow-python) module.
 
 ## Installation
 
-Run the following on the command line: (uses `python-setuptools`)
+Run the following on the command line (this will be modified in the future when available in pypi):
 ```
+$ git clone https://github.com/SpiderOak/flow-python.git
+$ cd flow-python
+$ sudo python setup.py install
+$ cd -
 $ git clone https://github.com/SpiderOak/flow-irc-gateway.git
 $ cd flow-irc-gateway
 $ sudo python setup.py install
@@ -30,10 +33,9 @@ $ sudo python setup.py install
 
 ## Run
 
-If installed, you can run it without arguments:
+You can just run it without arguments:
 ```
-# To run it without config/args first you need to run flow-electron and log in with an account.
-# flow-irc-gateway will try to load the default configuration depending on the platform.
+# To run it without config/args first you need to run semaphor and log in with an account.
 $ flow-irc-gateway
 ...
 # You can now connect your IRC client to localhost:6667
@@ -41,13 +43,6 @@ $ flow-irc-gateway
 or you can override the defaults with a config file and a specific username:
 ```
 $ flow-irc-gateway --config config.cfg --username username@site.com
-...
-# You can now connect your IRC client to localhost:6667
-```
-If not installed, install `python-requests` first, then run:
-```
-$ cd src
-$ ./flow-irc-gateway --config config.cfg --username username@site.com
 ...
 # You can now connect your IRC client to localhost:6667
 ```
@@ -70,9 +65,7 @@ List of config variables:
 - `irc-ports`: IRC listen ports (a list separated by comma or whitespace)
 - `daemon`: Fork and become a daemon.
 
-See a sample configuration file under [config/config.example.cfg](config/config.example.cfg). 
-
-For development you can use [config/dev.example.cfg](config/dev.example.cfg).
+Normally you won't need a config file to run the gateway. But you can see a sample configuration file under [config/config.example.cfg](config/config.example.cfg). 
 
 ## IRC Clients Configuration and Commands
 
