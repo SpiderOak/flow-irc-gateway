@@ -460,7 +460,6 @@ def set_sane_defaults(options):
     options.verbose = False
     options.daemon = False
     options.irc_ports = common.DEFAULT_IRC_PORT
-    options.show_timestamps = False
 
 
 def parse_options_and_config(argv):
@@ -477,6 +476,11 @@ def parse_options_and_config(argv):
         "--debug",
         action="store_true",
         help="Debug Mode",
+        default=False)
+    opt_parser.add_option(
+        "--show-timestamps",
+        action="store_true",
+        help="Prepend timestamps in messages",
         default=False)
     opt_parser.add_option(
         "--username",
