@@ -19,7 +19,7 @@
 #
 # Joel Rosdahl <joel@rosdahl.net>
 """
-flow-irc-gateway: Flow-IRC-Gateway main script
+flow_irc_gateway.py: Flow-IRC-Gateway main script
 """
 
 import os
@@ -126,11 +126,11 @@ class FlowIRCGateway(object):
             self.print_debug("send_message: '%s'" % str(flow_err))
             return False
 
-    def create_direct_conversation_channel(self,
-                                           account_id,
-                                           account_username,
-                                           oid,
-                                           organization_name):
+    def create_direct_channel(self,
+                              account_id,
+                              account_username,
+                              oid,
+                              organization_name):
         """Creates a direct conversation channel.
         Arguments:
         account_id : string, receiver's AccountID.
@@ -300,7 +300,8 @@ class FlowIRCGateway(object):
             print(msg)
             sys.stdout.flush()
 
-    def print_error(self, msg):
+    @staticmethod
+    def print_error(msg):
         """Prints an error msg string to stdout."""
         sys.stderr.write("%s\n" % msg)
 

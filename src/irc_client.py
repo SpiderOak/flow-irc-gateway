@@ -105,8 +105,11 @@ class IRCClient(object):
                 oid = self.gateway.get_oid_from_name(organization_name)
                 if oid:
                     direct_conversation_channel = \
-                        self.gateway.create_direct_conversation_channel(
-                            member_account_id, username, oid, organization_name
+                        self.gateway.create_direct_channel(
+                            member_account_id,
+                            username,
+                            oid,
+                            organization_name
                         )
         return direct_conversation_channel
 
@@ -480,6 +483,8 @@ class IRCClient(object):
                     message_nickname = member.nickname
                 else:
                     message_nickname = member.get_irc_nickname()
+                # IRC does not support newline within messages
+                message_text = message_text.replace("\n", "\\n")
                 self.message(":%s!%s@%s PRIVMSG %s :%s" %
                              (message_nickname,
                               member.user,

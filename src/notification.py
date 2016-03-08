@@ -106,6 +106,8 @@ class NotificationHandler(object):
             message_timestamp = common.get_message_timestamp_string(
                 message["CreationTime"])
             message_text = message_timestamp + " " + message_text
+        # IRC does not support newline within messages
+        message_text = message_text.replace("\n", "\\n")
         self.gateway.notify_clients(":%s!%s@%s PRIVMSG %s :%s" %
                                     (sender_member.get_irc_nickname(),
                                      sender_member.user,
