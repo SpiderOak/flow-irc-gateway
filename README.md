@@ -139,6 +139,6 @@ The gateway currently adds the five first chars of the ChannelID as a suffix to 
 - Add unit test to the Flow module, and to flow-irc-gateway itself.
 - Process "org-member-event" notifications to notify of other member joining teams the user is part of.
 - Print debug output to a log file.
-- Many sections of the code assume the existence of simultaneuos IRC client connections (see variable self.clients in [src/flow-irc-gateway](src/flow-irc-gateway)). This needs to be cleaned up, the gateway only support one IRC client connection at a time.
+- Many sections of the code assume the existence of simultaneuos IRC client connections (see variable self.clients in [src/flow_irc_gateway.py](src/flow_irc_gateway.py)). This needs to be cleaned up, the gateway only support one IRC client connection at a time.
 - Gracefully handle Flow.FlowError exceptions.
 
