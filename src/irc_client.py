@@ -341,7 +341,8 @@ class IRCClient(object):
         (the data is written to self.__readbuffer).
         """
         try:
-            data = (self.client_socket.recv(2 ** 10)).decode('utf-8')
+            data = self.client_socket.recv(2 ** 10)
+            data = data.decode(common.get_system_encoding())
             self.gateway.print_debug(
                 "[%s:%d] -> %r" % (self.host, self.port, data))
             quitmsg = "EOT"
