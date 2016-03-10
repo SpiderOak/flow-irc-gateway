@@ -13,7 +13,7 @@ class ChannelMember(object):
                  user="", host="", realname=""):
         """Arguments:
         username : string, Account username.
-        account_id : string, Account's AccountID.
+        account_id : string, Account's accountId.
         organization_name : string, Organization's Name
         user, host and realname: string, IRC attributes reserved for later use
         """
@@ -38,13 +38,13 @@ class Channel(object):
                  organization_id="", organization_name=""):
         """Arguments:
         gateway : FlowIRCGateway, reference to the FlowIRCGateway object
-        channel_id : string, Channel's ChannelID
-        channel_name : string, Channel's Name
-        organization_id : string, Organization's OrgID
-        organization_name : string, Organization's Name
+        channel_id : string, Channel's channelId.
+        channel_name : string, Channel's Name.
+        organization_id : string, Organization's orgId.
+        organization_name : string, Organization's Name.
         """
         self.gateway = gateway
-        self.members = set()  # set of "ChannelMember"
+        self.members = set()  # set of "channelMember"
         self.channel_id = channel_id
         self.channel_name = channel_name
         self.organization_id = organization_id
@@ -52,7 +52,7 @@ class Channel(object):
         self.name_collides = False
 
     def channel_suffix(self):
-        """Returns a suffix with the first last 5 chars of the ChannelID.
+        """Returns a suffix with the first last 5 chars of the channelId.
         IRC channels are identified with their name, so you can't have
         two channels with the same name. This suffix is used to display
         Flow Channels with the same name within an Organization.
@@ -72,7 +72,7 @@ class Channel(object):
     def get_member_from_account_id(self, account_id):
         """Returns the member within this channel given an account_id
         Arguments:
-        account_id : string, represents the member AccountID
+        account_id : string, represents the member accountId
         Returns a 'ChannelMember' instance.
         Returns 'None' if the member does not exist within this channel.
         """

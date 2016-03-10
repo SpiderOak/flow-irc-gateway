@@ -473,12 +473,12 @@ class IRCClient(object):
             channel.channel_id)
         for message in reversed(messages):
             member = channel.get_member_from_account_id(
-                message["SenderAccountID"])
+                message["senderAccountId"])
             if member:
-                message_text = message["Text"]
+                message_text = message["text"]
                 if self.gateway.show_timestamps:
                     message_timestamp = common.get_message_timestamp_string(
-                        message["CreationTime"])
+                        message["creationTime"])
                     message_text = message_timestamp + " " + message_text
                 if member.account_id == self.gateway.flow_account_id:
                     message_nickname = member.nickname

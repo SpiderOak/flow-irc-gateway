@@ -21,8 +21,8 @@ class NotificationHandler(object):
         """Processes 'org' notifications."""
         assert organizations_data
         for org in organizations_data:
-            oid = org["ID"]
-            organization_name = org["Name"]
+            oid = org["id"]
+            organization_name = org["name"]
             assert oid
             assert organization_name
             self.gateway.organizations[oid] = organization_name
@@ -36,8 +36,8 @@ class NotificationHandler(object):
         """Processes 'channel' notifications."""
         assert channels_data
         for channel_data in channels_data:
-            oid = channel_data["OrgID"]
-            channel_id = channel_data["ID"]
+            oid = channel_data["orgId"]
+            channel_id = channel_data["id"]
             assert oid
             assert channel_id
             channel = self.gateway.get_channel(channel_id)
@@ -53,9 +53,9 @@ class NotificationHandler(object):
         """Processes the 'ChannelMessages' attribute
         of 'channel' notifications.
         """
-        channel_id = message["ID"]
-        channel_name = message["Name"]
-        direct_channel = message["Purpose"] == "direct message"
+        channel_id = message["id"]
+        channel_name = message["name"]
+        direct_channel = message["purpose"] == "direct message"
         assert channel_id
         assert channel_name or direct_channel
         # ChannelMessage notifications may arrive from new_direct_conversation
@@ -90,9 +90,9 @@ class NotificationHandler(object):
         """Processes the 'RegularMessages' attribute
         of 'channel' notifications.
         """
-        sender_account_id = message["SenderAccountID"]
-        channel_id = message["ChannelID"]
-        message_text = message["Text"]
+        sender_account_id = message["senderAccountId"]
+        channel_id = message["channelId"]
+        message_text = message["text"]
         assert sender_account_id
         assert channel_id
         channel = self.gateway.get_channel(channel_id)
@@ -104,7 +104,7 @@ class NotificationHandler(object):
         assert sender_member
         if self.gateway.show_timestamps:
             message_timestamp = common.get_message_timestamp_string(
-                message["CreationTime"])
+                message["creationTime"])
             message_text = message_timestamp + " " + message_text
         # IRC does not support newline within messages
         message_text = message_text.replace("\n", "\\n")
@@ -117,12 +117,12 @@ class NotificationHandler(object):
 
     def message_notification(self, messages_data):
         """Processes 'message' notifications."""
-        channel_messages = messages_data["ChannelMessages"]
+        channel_messages = messages_data["channelMessages"]
         if channel_messages:
             for message in channel_messages:
                 self.process_channel_message(message)
 
-        regular_messages = messages_data["RegularMessages"]
+        regular_messages = messages_data["regularMessages"]
         if regular_messages:
             for message in regular_messages:
                 self.process_regular_message(message)
@@ -139,9 +139,9 @@ class NotificationHandler(object):
                 channel_id)
             for member in members:
                 if not channel.get_member_from_nickname(
-                        member["EmailAddress"]):
-                    channel_member = ChannelMember(member["EmailAddress"],
-                                                   member["AccountID"],
+                        member["username"]):
+                    channel_member = ChannelMember(member["username"],
+                                                   member["accountId"],
                                                    channel.organization_name)
                     channel.add_member(channel_member)
                     self.gateway.notify_clients(

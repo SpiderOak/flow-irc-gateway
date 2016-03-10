@@ -56,10 +56,10 @@ class FlowIRCGateway(object):
         gateway_name_limit = 63  # From the RFC.
         self.name = socket.getfqdn()[:gateway_name_limit]
 
-        self.channels = {}  # ChannelID --> Channel instance.
+        self.channels = {}  # channelId --> Channel instance.
         self.clients = {}  # Socket --> IRCClient instance.
-        self.organizations = {}  # OrgID --> Organization Name
-        self.pending_channels = {}  # ChannelID --> PendingChannel instance
+        self.organizations = {}  # orgId --> Organization Name
+        self.pending_channels = {}  # channelId --> PendingChannel instance
 
         self.client_connected = True
         self.flow_service = None
@@ -85,7 +85,7 @@ class FlowIRCGateway(object):
         return None
 
     def get_oid_from_name(self, org_name):
-        """Returns an the OrgID given an organization name.
+        """Returns an the orgId given an organization name.
         Arguments:
         org_name : string, organization name.
         Returns an empty string if not found.
@@ -96,7 +96,7 @@ class FlowIRCGateway(object):
         return ""
 
     def get_member_account_id(self, username):
-        """Returns an AccountID string from Flow given the username.
+        """Returns an accountId string from Flow given the username.
         Arguments:
         username : string, Flow username of the account.
         Returns an empty string if not found.
@@ -104,7 +104,7 @@ class FlowIRCGateway(object):
         try:
             member_peer_data = self.flow_service.get_peer(username)
             if member_peer_data:
-                return member_peer_data["AccountID"]
+                return member_peer_data["accountId"]
         except Flow.FlowError as flow_err:
             self.print_debug("get_peer: '%s'" % str(flow_err))
         return ""
@@ -133,9 +133,9 @@ class FlowIRCGateway(object):
                               organization_name):
         """Creates a direct conversation channel.
         Arguments:
-        account_id : string, receiver's AccountID.
+        account_id : string, receiver's accountId.
         account_username : string, receiver's username.
-        oid : string, OrganizationID the two members share.
+        oid : string, orgId the two members share.
         organization_name : Name of the Organization the two members share.
         Returns a 'Channel' instance.
         If there's an error in the channel creation, then 'None' is returned.
@@ -167,7 +167,7 @@ class FlowIRCGateway(object):
         return direct_conversation_channel
 
     def get_channel(self, channel_id):
-        """Returns a 'Channel' instance given a ChannelID.
+        """Returns a 'Channel' instance given a channelId.
         Returns 'None' if not found.
         """
         try:
@@ -194,19 +194,19 @@ class FlowIRCGateway(object):
     def get_channels(self, oid, org_name):
         """Loads all channels of a given organization
         Arguments:
-        oid : string, OrgID of the Organization
+        oid : string, orgId of the Organization
         org_name : string, Name of the Organization
         """
         channels = self.flow_service.enumerate_channels(oid)
         for channel in channels:
-            channel_name = channel["Name"]
-            direct_channel = channel["Purpose"] == "direct message"
+            channel_name = channel["name"]
+            direct_channel = channel["purpose"] == "direct message"
             if direct_channel:
                 irc_channel = DirectChannel(
-                    self, channel["ID"], oid, org_name)
+                    self, channel["id"], oid, org_name)
             else:
                 irc_channel = Channel(
-                    self, channel["ID"], channel_name, oid, org_name)
+                    self, channel["id"], channel_name, oid, org_name)
                 self.check_channel_collision(irc_channel)
             self.get_channel_members(irc_channel)
             self.add_channel(irc_channel)
@@ -217,8 +217,8 @@ class FlowIRCGateway(object):
         self.channels = {}
         orgs = self.flow_service.enumerate_orgs()
         for org in orgs:
-            oid = org["ID"]
-            org_name = org["Name"]
+            oid = org["id"]
+            org_name = org["name"]
             self.organizations[oid] = org_name
             self.get_channels(oid, org_name)
 
@@ -230,7 +230,7 @@ class FlowIRCGateway(object):
         local_accounts = self.flow_service.enumerate_local_accounts()
         if not local_accounts:
             return None
-        return local_accounts[0]["EmailAddress"]
+        return local_accounts[0]["username"]
 
     def register_callbacks(self):
         """Registers all the notification types this gateway supports."""
@@ -325,8 +325,8 @@ class FlowIRCGateway(object):
         members = self.flow_service.enumerate_channel_members(
             channel.channel_id)
         for member in members:
-            account_id = member["AccountID"]
-            account_username = member["EmailAddress"]
+            account_id = member["accountId"]
+            account_username = member["username"]
             if account_username == self.flow_username:
                 self.flow_account_id = account_id
             channel_member = ChannelMember(
