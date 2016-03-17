@@ -459,7 +459,6 @@ def set_sane_defaults(options):
     options.uri = ""
     options.flowappglue = ""
     options.verbose = False
-    options.daemon = False
     options.irc_ports = common.DEFAULT_IRC_PORT
 
 
@@ -487,6 +486,11 @@ def parse_options_and_config(argv):
         "--username",
         metavar="X",
         help="flow account username")
+    opt_parser.add_option(
+        "--daemon",
+        action="store_true",
+        help="Debug Mode",
+        default=False)
 
     (options, _) = opt_parser.parse_args(argv[1:])
 
