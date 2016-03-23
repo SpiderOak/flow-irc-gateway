@@ -22,6 +22,7 @@
 flow_irc_gateway.py: Flow-IRC-Gateway main script
 """
 
+from __future__ import print_function
 import os
 import select
 import socket
@@ -318,6 +319,14 @@ class FlowIRCGateway(object):
         for client in self.clients.values():
             client.message(irc_msg)
 
+    def get_username_from_id(self, account_id):
+        """Returns the username of a given account.
+        Arguments:
+        account_id : string
+        """
+        peer_data = self.flow_service.get_peer_from_id(account_id)
+        return peer_data["username"] if peer_data else ""
+
     def get_channel_members(self, channel):
         """Retrieves (via Flow.enumerate_channel_members) and sets
         all channel members on a given 'Channel' instance.
@@ -326,7 +335,8 @@ class FlowIRCGateway(object):
             channel.channel_id)
         for member in members:
             account_id = member["accountId"]
-            account_username = member["username"]
+            account_username = self.get_username_from_id(account_id)
+            assert account_username
             if account_username == self.flow_username:
                 self.flow_account_id = account_id
             channel_member = ChannelMember(

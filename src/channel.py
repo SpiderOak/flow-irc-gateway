@@ -81,19 +81,6 @@ class Channel(object):
                 return member
         return None
 
-    def get_member_from_nickname(self, nickname):
-        """Returns the member within this channel given a nickname.
-        The input nickname is escaped with common.irc_escape()
-        Arguments:
-        nickname : string, represents the member username/nickname.
-        Returns a 'ChannelMember' instance.
-        Returns 'None' if the member does not exist within this channel.
-        """
-        for member in self.members:
-            if member.nickname == common.irc_escape(nickname):
-                return member
-        return None
-
     def add_member(self, member):
         """Adds a member to this channel.
         Arguments:

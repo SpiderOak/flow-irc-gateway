@@ -127,26 +127,33 @@ class NotificationHandler(object):
             for message in regular_messages:
                 self.process_regular_message(message)
 
-    def channel_member_notification(self, channel_ids):
+    def channel_member_notification(self, channel_members_data):
         """Processes 'channel-member-event' notifications."""
-        for channel_id in channel_ids:
-            channel = self.gateway.get_channel(channel_id)
-            # A channel-member-event may arrive before 'channel' and 'message'
-            # notifications
+        for member_data in channel_members_data:
+            channel = self.gateway.get_channel(member_data["channelId"])
+            # A 'channel-member-event' may arrive
+            # before 'channel' and 'message' notifications
             if not channel:
                 continue
-            members = self.gateway.flow_service.enumerate_channel_members(
-                channel_id)
-            for member in members:
-                if not channel.get_member_from_nickname(
-                        member["username"]):
-                    channel_member = ChannelMember(member["username"],
-                                                   member["accountId"],
-                                                   channel.organization_name)
-                    channel.add_member(channel_member)
-                    self.gateway.notify_clients(
-                        ":%s!%s@%s JOIN :%s" %
-                        (channel_member.get_irc_nickname(),
-                         channel_member.user,
-                         channel_member.host,
-                         channel.get_irc_name()))
+            self.process_member(channel, member_data["accountId"])
+
+    def process_member(self, channel, member_account_id):
+        """Process a new member for a channel.
+        Arguments:
+        channel : Channel instance
+        member_account_id : string, new member's accountId
+        """
+        if channel.get_member_from_account_id(member_account_id):
+            return
+        username = self.gateway.get_username_from_id(member_account_id)
+        assert username
+        channel_member = ChannelMember(username,
+                                       member_account_id,
+                                       channel.organization_name)
+        channel.add_member(channel_member)
+        self.gateway.notify_clients(
+            ":%s!%s@%s JOIN :%s" %
+            (channel_member.get_irc_nickname(),
+             channel_member.user,
+             channel_member.host,
+             channel.get_irc_name()))
