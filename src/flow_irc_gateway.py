@@ -499,7 +499,7 @@ def parse_options_and_config(argv):
     opt_parser.add_option(
         "--daemon",
         action="store_true",
-        help="Debug Mode",
+        help="Daemon Mode",
         default=False)
 
     (options, _) = opt_parser.parse_args(argv[1:])
