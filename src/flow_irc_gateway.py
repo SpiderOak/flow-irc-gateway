@@ -1,23 +1,4 @@
 #! /usr/bin/env python
-#
-# Copyright (C) 2003-2015 Joel Rosdahl
-#
-# This program is free software; you can redistribute it and/or modify
-# it under the terms of the GNU General Public License as published by
-# the Free Software Foundation; either version 2 of the License, or
-# (at your option) any later version.
-#
-# This program is distributed in the hope that it will be useful, but
-# WITHOUT ANY WARRANTY; without even the implied warranty of
-# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the GNU
-# General Public License for more details.
-#
-# You should have received a copy of the GNU General Public License
-# along with this program; if not, write to the Free Software
-# Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA 02111-1307
-# USA
-#
-# Joel Rosdahl <joel@rosdahl.net>
 """
 flow_irc_gateway.py: Flow-IRC-Gateway main script
 """
@@ -33,11 +14,12 @@ import signal
 import ConfigParser
 import re
 
-import common
-from channel import ChannelMember, Channel, DirectChannel
-from irc_client import IRCClient
-from notification import NotificationHandler
 from flow import Flow
+
+from . import common
+from .channel import ChannelMember, Channel, DirectChannel
+from .irc_client import IRCClient
+from .notification import NotificationHandler
 
 
 class FlowIRCGateway(object):

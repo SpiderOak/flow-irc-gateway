@@ -7,6 +7,7 @@ By running this gateway you can use your IRC client of preference and connect to
 
 ## Features
 
+- This IRC gateway was originally based off of [miniircd](https://github.com/jrosdahl/miniircd)
 - On startup, the gateway starts the `flowappglue` REST server to interact with the Flow service.
 - Upon an IRC client connection/re-connection, Teams + Channels + Messages are loaded from Flow and shown to the IRC client. The user can then use the IRC client just like on any IRC network.
 - Teams and channels are listed in the MOTD (Message Of The Day).
@@ -24,11 +25,11 @@ Run the following on the command line (this will be modified in the future when 
 ```
 $ git clone https://github.com/SpiderOak/flow-python.git
 $ cd flow-python
-$ sudo python setup.py install
+$ python setup.py install
 $ cd -
 $ git clone https://github.com/SpiderOak/flow-irc-gateway.git
 $ cd flow-irc-gateway
-$ sudo python setup.py install
+$ python setup.py install
 ```
 
 ## Run
@@ -132,7 +133,6 @@ The gateway currently adds the five first chars of the ChannelID as a suffix to 
 
 ## TODO
 
-- Combine SpiderOak's license with miniircd's author license.
 - Make the following configurable:
  - nickname space character and "," replacement (see [src/common.py](src/common.py)).
  - timestamp format (see [src/common.py](src/common.py)).

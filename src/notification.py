@@ -2,8 +2,8 @@
 notification.py
 """
 
-import common
-from channel import ChannelMember, PendingChannel, Channel, DirectChannel
+from . import common
+from .channel import ChannelMember, PendingChannel, Channel, DirectChannel
 
 
 class NotificationHandler(object):

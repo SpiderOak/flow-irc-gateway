@@ -2,8 +2,9 @@
 channel.py
 """
 
-import common
 from collections import namedtuple
+
+from . import common
 
 
 class ChannelMember(object):
@@ -100,12 +101,14 @@ class DirectChannel(Channel):
         """
         super(
             DirectChannel,
-            self).__init__(
+            self
+        ).__init__(
             gateway,
             channel_id,
             "",
             organization_id,
-            organization_name)
+            organization_name
+        )
         self.created_on_irc_session = created_on_irc_session
 
     def get_irc_name(self):
